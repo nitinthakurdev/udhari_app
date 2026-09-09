@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "udhari_app",
-    "slug": "udhari_app",
-    "version": "1.0.0",
+    "name": "Udhari",
+    "slug": "udhari",
+    "version": "0.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "udhariapp",
