@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 
-import { colors } from "@/constants/theme";
+import { colors, typography } from "@/constants/theme";
 import { Images } from "@/constants/images";
 import Button from "@/components/ui/Button";
 
@@ -103,7 +103,16 @@ export default function WelcomeScreen() {
                 tintColor={color}
               />
             )}
+            onPress={() => router.push("/(auth)/account-type")}
+          />
+
+          <Button
+            label="Log In"
+            fullWidth
+            size="lg"
+            variant="outline"
             onPress={() => router.push("/(auth)/login")}
+            style={styles.loginButton}
           />
 
           <Text style={styles.footerText}>Simple accounts. Stronger business.</Text>
@@ -218,8 +227,8 @@ const styles = StyleSheet.create({
   logo: { height: 39, width: 42 },
   brandName: {
     color: colors.ink,
+    fontFamily: typography.fontFamilyExtraBold,
     fontSize: 24,
-    fontWeight: "900",
     letterSpacing: -1.2,
   },
   hero: { flex: 1, justifyContent: "center", paddingBottom: 34, paddingTop: 30 },
@@ -241,14 +250,14 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     color: colors.brand700,
+    fontFamily: typography.fontFamilyBold,
     fontSize: 10,
-    fontWeight: "900",
     letterSpacing: 1.2,
   },
   title: {
     color: colors.ink,
+    fontFamily: typography.fontFamilyExtraBold,
     fontSize: 44,
-    fontWeight: "900",
     letterSpacing: -2.4,
     lineHeight: 48,
     marginTop: 20,
@@ -256,6 +265,7 @@ const styles = StyleSheet.create({
   titleAccent: { color: colors.brand600 },
   subtitle: {
     color: colors.slate500,
+    fontFamily: typography.fontFamilyRegular,
     fontSize: 15,
     lineHeight: 23,
     marginTop: 18,
@@ -281,14 +291,14 @@ const styles = StyleSheet.create({
   },
   balanceLabel: {
     color: colors.slate400,
+    fontFamily: typography.fontFamilyBold,
     fontSize: 9,
-    fontWeight: "700",
     letterSpacing: 0.7,
   },
   balanceAmount: {
     color: colors.ink,
+    fontFamily: typography.fontFamilyExtraBold,
     fontSize: 27,
-    fontWeight: "900",
     letterSpacing: -1,
     marginTop: 4,
   },
@@ -300,7 +310,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
-  monthText: { color: colors.slate500, fontSize: 10, fontWeight: "600" },
+  monthText: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 10,
+  },
   summaryRow: {
     backgroundColor: colors.surface,
     borderRadius: 12,
@@ -325,11 +339,15 @@ const styles = StyleSheet.create({
   },
   receiveIcon: { backgroundColor: colors.brand100 },
   payIcon: { backgroundColor: "#e7ecf3" },
-  summaryLabel: { color: colors.slate400, fontSize: 9 },
+  summaryLabel: {
+    color: colors.slate400,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 9,
+  },
   summaryAmount: {
     color: colors.ink,
+    fontFamily: typography.fontFamilyBold,
     fontSize: 12,
-    fontWeight: "800",
     marginTop: 3,
   },
   activityRow: {
@@ -348,12 +366,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 36,
   },
-  avatarText: { color: colors.white, fontSize: 10, fontWeight: "900" },
+  avatarText: {
+    color: colors.white,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 10,
+  },
   activityDetails: { flex: 1, marginLeft: 10 },
-  activityName: { color: colors.ink, fontSize: 11, fontWeight: "800" },
-  activityLabel: { color: colors.slate400, fontSize: 9, marginTop: 3 },
-  activityAmount: { color: colors.brand600, fontSize: 11, fontWeight: "900" },
+  activityName: {
+    color: colors.ink,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 11,
+  },
+  activityLabel: {
+    color: colors.slate400,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 9,
+    marginTop: 3,
+  },
+  activityAmount: {
+    color: colors.brand600,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 11,
+  },
   bottomSection: { paddingTop: 4 },
+  loginButton: { marginTop: 12 },
   benefits: {
     alignItems: "center",
     flexDirection: "row",
@@ -369,9 +405,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 20,
   },
-  benefitText: { color: colors.slate500, fontSize: 11, fontWeight: "700" },
+  benefitText: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 11,
+  },
   footerText: {
     color: colors.slate400,
+    fontFamily: typography.fontFamilyRegular,
     fontSize: 10,
     marginTop: 20,
     textAlign: "center",

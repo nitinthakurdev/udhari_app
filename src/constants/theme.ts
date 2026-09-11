@@ -33,6 +33,9 @@ export const radii = {
 } as const;
 
 export const typography = {
-    fontWeightMedium: "600" as const,
-    fontWeightBold: "700" as const,
+    fontFamilyRegular: "Manrope_400Regular",
+    fontFamilyMedium: "Manrope_500Medium",
+    fontFamilySemiBold: "Manrope_600SemiBold",
+    fontFamilyBold: "Manrope_700Bold",
+    fontFamilyExtraBold: "Manrope_800ExtraBold",
 };

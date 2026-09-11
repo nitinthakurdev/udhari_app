@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     text: {
-        fontWeight: typography.fontWeightMedium,
+        fontFamily: typography.fontFamilySemiBold,
         textAlign: "center",
     },
 });
