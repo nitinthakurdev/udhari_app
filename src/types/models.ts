@@ -77,6 +77,7 @@ export interface BusinessConnection {
   uuid: string;
   connect_user_id: number;
   business_id: number;
+  created_by: number;
   role: string;
   created_at: string;
   updated_at: string;
@@ -84,3 +85,44 @@ export interface BusinessConnection {
   creator: ConnectionUser | null;
   business: Pick<Business, "uuid" | "name" | "slug"> | null;
 }
+
+export interface Transition {
+  uuid: string;
+  user_id: number;
+  business_id: number;
+  product_name: string;
+  product_qty: number;
+  product_price: number;
+  total_price: number;
+  status: string;
+  approved_by_user: boolean;
+  approved_by_business: boolean;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TransitionCreatePayload {
+  user_id: number;
+  business_id: number;
+  product_name: string;
+  product_price: number;
+  product_qty?: number;
+  total_price?: number;
+  status?: string;
+  comment?: string | null;
+}
+
+export type TransitionUpdatePayload = Partial<
+  Pick<
+    Transition,
+    | "product_name"
+    | "product_qty"
+    | "product_price"
+    | "total_price"
+    | "status"
+    | "approved_by_user"
+    | "approved_by_business"
+    | "comment"
+  >
+>;

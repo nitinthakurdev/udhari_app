@@ -38,6 +38,17 @@ export default function BusinessTabsLayout() {
         />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="transitions">
+        <NativeTabs.Trigger.Label>Transitions</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{
+            default: "arrow.left.arrow.right",
+            selected: "arrow.left.arrow.right.circle.fill",
+          }}
+          md="swap_horiz"
+        />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="businesses">
         <NativeTabs.Trigger.Label>Businesses</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
