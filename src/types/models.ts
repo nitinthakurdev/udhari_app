@@ -90,6 +90,7 @@ export interface Transition {
   uuid: string;
   user_id: number;
   business_id: number;
+  unit_id: number;
   product_name: string;
   product_qty: number;
   product_price: number;
@@ -105,11 +106,11 @@ export interface Transition {
 export interface TransitionCreatePayload {
   user_id: number;
   business_id: number;
+  unit_id: number;
   product_name: string;
   product_price: number;
+  total_price: number;
   product_qty?: number;
-  total_price?: number;
-  status?: string;
   comment?: string | null;
 }
 
@@ -117,12 +118,21 @@ export type TransitionUpdatePayload = Partial<
   Pick<
     Transition,
     | "product_name"
+    | "unit_id"
     | "product_qty"
     | "product_price"
     | "total_price"
-    | "status"
     | "approved_by_user"
     | "approved_by_business"
     | "comment"
   >
 >;
+
+export interface Unit {
+  id: number;
+  uuid: string;
+  name: string;
+  can_manage: boolean;
+  created_at: string;
+  updated_at: string;
+}

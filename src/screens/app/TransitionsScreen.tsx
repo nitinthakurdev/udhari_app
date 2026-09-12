@@ -16,12 +16,14 @@ import {
   getTransitions,
   updateTransition,
 } from "@/lib/api/transitions";
+import { getBusinessUnits } from "@/lib/api/units";
 import { useAuthStore } from "@/stores/authStore";
 import type {
   BusinessConnection,
   Transition,
   TransitionCreatePayload,
   TransitionUpdatePayload,
+  Unit,
 } from "@/types/models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
@@ -42,8 +44,6 @@ interface TransitionForm {
   productName: string;
   quantity: string;
   productPrice: string;
-  totalPrice: string;
-  status: string;
   comment: string;
 }
 
@@ -55,8 +55,6 @@ const emptyForm: TransitionForm = {
   productName: "",
   quantity: "1",
   productPrice: "",
-  totalPrice: "",
-  status: "pending",
   comment: "",
 };
 
@@ -72,6 +70,7 @@ export default function TransitionsScreen() {
   const [editing, setEditing] = useState<Transition | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [targetUuid, setTargetUuid] = useState("");
+  const [unitId, setUnitId] = useState("");
   const [form, setForm] = useState<TransitionForm>(emptyForm);
 
   const transitionsQuery = useQuery({
@@ -134,17 +133,34 @@ export default function TransitionsScreen() {
 
   const connections = connectionsQuery.data?.data ?? [];
   const transitions = transitionsQuery.data?.data ?? [];
+  const selectedConnection = connections.find(
+    (connection) => connection.uuid === targetUuid,
+  );
+  const unitBusinessUuid = businessMode
+    ? activeBusiness?.uuid
+    : selectedConnection?.business?.uuid;
+  const unitsQuery = useQuery({
+    queryKey: ["units", "business", unitBusinessUuid],
+    queryFn: () => getBusinessUnits(unitBusinessUuid ?? ""),
+    enabled: formOpen && Boolean(unitBusinessUuid),
+  });
+  const units = unitsQuery.data?.data ?? [];
+  const effectiveUnitId = units.some((unit) => String(unit.id) === unitId)
+    ? unitId
+    : String(units[0]?.id ?? "");
 
   const closeForm = () => {
     setFormOpen(false);
     setEditing(null);
     setTargetUuid("");
+    setUnitId("");
     setForm(emptyForm);
   };
 
   const openCreate = () => {
     setEditing(null);
     setTargetUuid(connections[0]?.uuid ?? "");
+    setUnitId("");
     setForm(emptyForm);
     setFormOpen(true);
   };
@@ -157,12 +173,11 @@ export default function TransitionsScreen() {
     );
     setEditing(transition);
     setTargetUuid(target?.uuid ?? "");
+    setUnitId(String(transition.unit_id));
     setForm({
       productName: transition.product_name,
       quantity: String(transition.product_qty),
       productPrice: String(transition.product_price),
-      totalPrice: String(transition.total_price),
-      status: transition.status,
       comment: transition.comment ?? "",
     });
     setFormOpen(true);
@@ -171,7 +186,7 @@ export default function TransitionsScreen() {
   const submit = () => {
     const quantity = Number(form.quantity);
     const productPrice = Number(form.productPrice);
-    const totalPrice = Number(form.totalPrice);
+    const selectedUnitId = Number(effectiveUnitId);
     const productName = form.productName.trim();
 
     if (productName.length < 2) {
@@ -185,21 +200,29 @@ export default function TransitionsScreen() {
       );
       return;
     }
-    if (!Number.isFinite(productPrice) || productPrice < 0) {
+    if (
+      form.productPrice.trim() === "" ||
+      !Number.isFinite(productPrice) ||
+      productPrice < 0
+    ) {
       Alert.alert("Invalid unit price", "Unit price must be zero or greater.");
       return;
     }
-    if (!Number.isFinite(totalPrice) || totalPrice < 0) {
-      Alert.alert("Invalid price", "Total price must be zero or greater.");
+    const totalPrice = calculateFormTotal(form);
+    if (totalPrice > 9_999_999_999.99) {
+      Alert.alert("Invalid total", "Calculated total price is too large.");
       return;
     }
-
+    if (!Number.isInteger(selectedUnitId) || selectedUnitId < 1) {
+      Alert.alert("Unit required", "Select a unit before saving.");
+      return;
+    }
     const commonPayload = {
       product_name: productName,
       product_qty: quantity,
       product_price: productPrice,
       total_price: totalPrice,
-      status: form.status.trim() || "pending",
+      unit_id: selectedUnitId,
       comment: form.comment.trim() || null,
     };
 
@@ -355,9 +378,6 @@ export default function TransitionsScreen() {
                     </View>
 
                     <View style={styles.metaRow}>
-                      <Text style={styles.status}>
-                        {transition.status.toUpperCase()}
-                      </Text>
                       <Text style={styles.quantity}>
                         Qty {transition.product_qty}
                       </Text>
@@ -430,12 +450,19 @@ export default function TransitionsScreen() {
         connections={connections}
         editing={editing}
         form={form}
+        units={units}
+        unitsError={
+          unitsQuery.isError ? getApiError(unitsQuery.error).message : ""
+        }
+        unitsLoading={unitsQuery.isFetching}
+        unitId={effectiveUnitId}
         open={formOpen}
         saving={saveMutation.isPending}
         targetUuid={targetUuid}
         onChange={setForm}
         onClose={closeForm}
         onSelectTarget={setTargetUuid}
+        onSelectUnit={setUnitId}
         onSubmit={submit}
       />
     </Page>
@@ -447,24 +474,34 @@ function TransitionFormModal({
   connections,
   editing,
   form,
+  units,
+  unitsError,
+  unitsLoading,
+  unitId,
   open,
   saving,
   targetUuid,
   onChange,
   onClose,
   onSelectTarget,
+  onSelectUnit,
   onSubmit,
 }: {
   businessMode: boolean;
   connections: BusinessConnection[];
   editing: Transition | null;
   form: TransitionForm;
+  units: Unit[];
+  unitsError: string;
+  unitsLoading: boolean;
+  unitId: string;
   open: boolean;
   saving: boolean;
   targetUuid: string;
   onChange: (form: TransitionForm) => void;
   onClose: () => void;
   onSelectTarget: (uuid: string) => void;
+  onSelectUnit: (id: string) => void;
   onSubmit: () => void;
 }) {
   const update = (field: keyof TransitionForm, value: string) =>
@@ -534,6 +571,14 @@ function TransitionFormModal({
               </View>
             ) : null}
 
+            <UnitDropdown
+              error={unitsError}
+              loading={unitsLoading}
+              units={units}
+              value={unitId}
+              onChange={onSelectUnit}
+            />
+
             <Input
               label="Product or service"
               value={form.productName}
@@ -557,20 +602,12 @@ function TransitionFormModal({
                 containerStyle={styles.formField}
               />
             </View>
-            <Input
-              label="Total price"
-              value={form.totalPrice}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              onChangeText={(value) => update("totalPrice", value)}
-            />
-            <Input
-              label="Status"
-              value={form.status}
-              maxLength={30}
-              autoCapitalize="none"
-              onChangeText={(value) => update("status", value)}
-            />
+            <View style={styles.totalPreview}>
+              <Text style={styles.totalPreviewLabel}>Calculated total</Text>
+              <Text style={styles.totalPreviewValue}>
+                {formatAmount(calculateFormTotal(form))}
+              </Text>
+            </View>
             <Input
               label="Comment"
               value={form.comment}
@@ -590,6 +627,85 @@ function TransitionFormModal({
         </View>
       </KeyboardAvoidingView>
     </Modal>
+  );
+}
+
+function UnitDropdown({
+  error,
+  loading,
+  units,
+  value,
+  onChange,
+}: {
+  error: string;
+  loading: boolean;
+  units: Unit[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const selectedUnit = units.find((unit) => String(unit.id) === value);
+  const disabled = loading || units.length === 0;
+
+  return (
+    <View>
+      <Text style={styles.inputLabel}>Unit</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled, expanded }}
+        disabled={disabled}
+        onPress={() => setExpanded((current) => !current)}
+        style={({ pressed }) => [
+          styles.dropdownTrigger,
+          disabled && styles.dropdownDisabled,
+          pressed && !disabled && styles.dropdownPressed,
+        ]}
+      >
+        <Text style={selectedUnit ? styles.dropdownText : styles.dropdownPlaceholder}>
+          {selectedUnit?.name ?? (loading ? "Loading units…" : "No units available")}
+        </Text>
+        <SymbolView
+          name={{ ios: "chevron.down", android: "arrow_drop_down", web: "arrow_drop_down" }}
+          size={18}
+          tintColor={colors.slate500}
+        />
+      </Pressable>
+
+      {expanded ? (
+        <View style={styles.dropdownMenu}>
+          {units.map((unit) => {
+            const selected = String(unit.id) === value;
+
+            return (
+              <Pressable
+                accessibilityRole="button"
+                key={unit.uuid}
+                onPress={() => {
+                  onChange(String(unit.id));
+                  setExpanded(false);
+                }}
+                style={[styles.dropdownOption, selected && styles.dropdownOptionSelected]}
+              >
+                <Text
+                  style={[styles.dropdownOptionText, selected && styles.dropdownOptionTextSelected]}
+                >
+                  {unit.name}
+                </Text>
+                {selected ? (
+                  <SymbolView
+                    name={{ ios: "checkmark", android: "check", web: "check" }}
+                    size={16}
+                    tintColor={colors.brand600}
+                  />
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
   );
 }
 
@@ -643,6 +759,15 @@ function formatAmount(value: number) {
     currency: "INR",
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function calculateFormTotal(form: TransitionForm) {
+  const quantity = Number(form.quantity);
+  const productPrice = Number(form.productPrice);
+
+  if (!Number.isFinite(quantity) || !Number.isFinite(productPrice)) return 0;
+
+  return Math.round((quantity * productPrice + Number.EPSILON) * 100) / 100;
 }
 
 function formatDate(value: string) {
@@ -706,15 +831,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   metaRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
-  status: {
-    backgroundColor: colors.brand50,
-    borderRadius: radii.full,
-    color: colors.brand700,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
   quantity: {
     color: colors.slate700,
     fontFamily: typography.fontFamilySemiBold,
@@ -784,6 +900,63 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: spacing.sm,
   },
+  helperText: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+  },
+  errorText: {
+    color: "#dc2626",
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 11,
+  },
+  dropdownTrigger: {
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+  },
+  dropdownDisabled: { backgroundColor: colors.surface, opacity: 0.7 },
+  dropdownPressed: { borderColor: colors.brand600 },
+  dropdownText: {
+    color: colors.ink,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 13,
+  },
+  dropdownPlaceholder: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 13,
+  },
+  dropdownMenu: {
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    marginTop: spacing.xs,
+    overflow: "hidden",
+  },
+  dropdownOption: {
+    alignItems: "center",
+    borderBottomColor: colors.line,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+  },
+  dropdownOptionSelected: { backgroundColor: colors.brand50 },
+  dropdownOptionText: {
+    color: colors.slate700,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+  },
+  dropdownOptionTextSelected: { color: colors.brand700 },
   targets: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   target: {
     backgroundColor: colors.surface,
@@ -806,5 +979,23 @@ const styles = StyleSheet.create({
   targetTextSelected: { color: colors.brand700 },
   formRow: { flexDirection: "row", gap: spacing.md },
   formField: { flex: 1 },
+  totalPreview: {
+    alignItems: "center",
+    backgroundColor: colors.brand50,
+    borderRadius: radii.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: spacing.md,
+  },
+  totalPreviewLabel: {
+    color: colors.brand700,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 11,
+  },
+  totalPreviewValue: {
+    color: colors.ink,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 16,
+  },
   commentInput: { minHeight: 72, textAlignVertical: "top" },
 });
