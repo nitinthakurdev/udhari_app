@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import AuthScaffold from "@/components/auth/AuthScaffold";
-import Button from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 
 type AccountType = "business" | "personal";
@@ -70,7 +70,11 @@ export default function AccountTypeScreen() {
           disabled={!selectedType}
           rightIcon={(color) => (
             <SymbolView
-              name={{ ios: "arrow.right", android: "arrow_forward", web: "arrow_forward" }}
+              name={{
+                ios: "arrow.right",
+                android: "arrow_forward",
+                web: "arrow_forward",
+              }}
               size={19}
               tintColor={color}
             />
@@ -135,7 +139,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     padding: spacing.lg,
   },
-  optionSelected: { backgroundColor: colors.brand50, borderColor: colors.brand600 },
+  optionSelected: {
+    backgroundColor: colors.brand50,
+    borderColor: colors.brand600,
+  },
   optionPressed: { opacity: 0.82 },
   iconBox: {
     alignItems: "center",

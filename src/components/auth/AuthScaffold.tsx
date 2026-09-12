@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 
-import Button from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { Images } from "@/constants/images";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 
@@ -55,7 +55,11 @@ export default function AuthScaffold({
               size="sm"
               leftIcon={(color) => (
                 <SymbolView
-                  name={{ ios: "chevron.left", android: "arrow_back", web: "arrow_back" }}
+                  name={{
+                    ios: "chevron.left",
+                    android: "arrow_back",
+                    web: "arrow_back",
+                  }}
                   size={16}
                   tintColor={color}
                 />
@@ -66,7 +70,11 @@ export default function AuthScaffold({
 
             <View style={styles.brandRow}>
               <View style={styles.logoBox}>
-                <Image contentFit="contain" source={Images.logo} style={styles.logo} />
+                <Image
+                  contentFit="contain"
+                  source={Images.logo}
+                  style={styles.logo}
+                />
               </View>
               <Text style={styles.brandName}>udhari</Text>
             </View>

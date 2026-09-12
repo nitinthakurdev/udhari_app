@@ -1,21 +1,15 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { SymbolView } from "expo-symbols";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { colors, typography } from "@/constants/theme";
 import { Images } from "@/constants/images";
-import Button from "@/components/ui/Button";
-
+import { Button } from "@/components/ui/Button";
 
 export default function WelcomeScreen() {
   return (
-      <View style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <View pointerEvents="none" style={styles.backgroundDecoration}>
         <View style={styles.outerCircle} />
         <View style={styles.innerCircle} />
@@ -27,7 +21,11 @@ export default function WelcomeScreen() {
       >
         <View style={styles.header}>
           <View style={styles.logoBox}>
-            <Image contentFit="contain" source={Images.logo} style={styles.logo} />
+            <Image
+              contentFit="contain"
+              source={Images.logo}
+              style={styles.logo}
+            />
           </View>
           <Text style={styles.brandName}>udhari</Text>
         </View>
@@ -66,7 +64,11 @@ export default function WelcomeScreen() {
                 label="You'll receive"
               />
               <View style={styles.summaryDivider} />
-              <BalanceSummary amount="₹14,350" direction="up" label="You'll pay" />
+              <BalanceSummary
+                amount="₹14,350"
+                direction="up"
+                label="You'll pay"
+              />
             </View>
 
             <View style={styles.activityRow}>
@@ -115,7 +117,9 @@ export default function WelcomeScreen() {
             style={styles.loginButton}
           />
 
-          <Text style={styles.footerText}>Simple accounts. Stronger business.</Text>
+          <Text style={styles.footerText}>
+            Simple accounts. Stronger business.
+          </Text>
         </View>
       </ScrollView>
     </View>
@@ -144,8 +148,16 @@ function BalanceSummary({
         <SymbolView
           name={
             isReceive
-              ? { ios: "arrow.down.left", android: "south_west", web: "south_west" }
-              : { ios: "arrow.up.right", android: "north_east", web: "north_east" }
+              ? {
+                  ios: "arrow.down.left",
+                  android: "south_west",
+                  web: "south_west",
+                }
+              : {
+                  ios: "arrow.up.right",
+                  android: "north_east",
+                  web: "north_east",
+                }
           }
           size={17}
           tintColor={isReceive ? colors.brand600 : colors.slate500}
@@ -159,7 +171,13 @@ function BalanceSummary({
   );
 }
 
-function Benefit({ icon, label }: { icon: "checkmark" | "lock"; label: string }) {
+function Benefit({
+  icon,
+  label,
+}: {
+  icon: "checkmark" | "lock";
+  label: string;
+}) {
   return (
     <View style={styles.benefit}>
       <View style={styles.checkCircle}>
@@ -231,7 +249,12 @@ const styles = StyleSheet.create({
     fontSize: 24,
     letterSpacing: -1.2,
   },
-  hero: { flex: 1, justifyContent: "center", paddingBottom: 34, paddingTop: 30 },
+  hero: {
+    flex: 1,
+    justifyContent: "center",
+    paddingBottom: 34,
+    paddingTop: 30,
+  },
   eyebrowPill: {
     alignItems: "center",
     alignSelf: "flex-start",
@@ -329,7 +352,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 9,
   },
-  summaryDivider: { backgroundColor: colors.line, marginHorizontal: 10, width: 1 },
+  summaryDivider: {
+    backgroundColor: colors.line,
+    marginHorizontal: 10,
+    width: 1,
+  },
   summaryIcon: {
     alignItems: "center",
     borderRadius: 18,

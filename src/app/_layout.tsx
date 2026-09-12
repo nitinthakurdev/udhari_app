@@ -7,10 +7,16 @@ import {
   useFonts,
 } from "@expo-google-fonts/manrope";
 import { stackNavigation } from "@/constants/navigationAnimations";
+import { useAuthStore } from "@/stores/authStore";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { View } from "react-native";
-import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useState } from "react";
+import { ActivityIndicator, View } from "react-native";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -20,24 +26,54 @@ export default function RootLayout() {
     Manrope_700Bold,
     Manrope_800ExtraBold,
   });
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { retry: 1, staleTime: 30_000 },
+          mutations: { retry: false },
+        },
+      }),
+  );
 
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <SafeAreaProvider>
-      <RootNavigator />
-    </SafeAreaProvider>
+    <QueryClientProvider client={queryClient}>
+      <SafeAreaProvider>
+        <RootNavigator />
+      </SafeAreaProvider>
+    </QueryClientProvider>
   );
 }
 
 function RootNavigator() {
   const insets = useSafeAreaInsets();
+  const hasHydrated = useAuthStore((state) => state.hasHydrated);
+  const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
+
+  if (!hasHydrated) {
+    return (
+      <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
+        <ActivityIndicator color="#155eef" size="large" />
+      </View>
+    );
+  }
 
   return (
-    <View style={{ flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom }}>
+    <View
+      style={{ flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom }}
+    >
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, animation: stackNavigation() }}>
-        <Stack.Screen name="(auth)" />
+      <Stack
+        screenOptions={{ headerShown: false, animation: stackNavigation() }}
+      >
+        <Stack.Protected guard={!isAuthenticated}>
+          <Stack.Screen name="(auth)" />
+        </Stack.Protected>
+        <Stack.Protected guard={isAuthenticated}>
+          <Stack.Screen name="(app)" />
+        </Stack.Protected>
       </Stack>
     </View>
   );
