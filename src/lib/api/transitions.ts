@@ -38,9 +38,16 @@ export async function updateTransition(
   return data;
 }
 
-export async function deleteTransition(uuid: string) {
-  const { data } = await apiClient.delete<ApiSuccess<null>>(
-    `/transitions/delete/${uuid}`,
+export async function cancelTransition(uuid: string) {
+  const { data } = await apiClient.patch<ApiSuccess<Transition>>(
+    `/transitions/cancel/${uuid}`,
+  );
+  return data;
+}
+
+export async function markTransitionPaymentReceived(uuid: string) {
+  const { data } = await apiClient.patch<ApiSuccess<Transition>>(
+    `/transitions/payment-received/${uuid}`,
   );
   return data;
 }

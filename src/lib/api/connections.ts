@@ -7,9 +7,11 @@ import type {
   CustomerSearchResult,
 } from "@/types/models";
 
-export async function getBusinessConnections() {
+export async function getBusinessConnections(businessUuid?: string) {
   const { data } = await apiClient.get<ApiSuccess<BusinessConnection[]>>(
-    "/customer-management/list",
+    businessUuid
+      ? `/customer-management/connected-businesses/${businessUuid}`
+      : "/customer-management/list",
   );
   return data;
 }
@@ -21,13 +23,17 @@ export async function getConnectedUsers(businessUuid: string) {
   return data;
 }
 
-export async function connectBusiness(business: BusinessSearchResult) {
+export async function connectBusiness(
+  business: BusinessSearchResult,
+  sourceBusinessUuid?: string,
+) {
   const { data } = await apiClient.post<ApiSuccess<BusinessConnection>>(
     "/customer-management/create",
     {
       business_id: business.business_id,
       connect_user_id: business.connect_user_id,
       role: "customer",
+      ...(sourceBusinessUuid ? { source_business_uuid: sourceBusinessUuid } : {}),
     },
   );
   return data;

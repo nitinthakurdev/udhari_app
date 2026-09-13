@@ -9,6 +9,7 @@ export default function ConfigurationLayout() {
         headerShadowVisible: false,
         headerTintColor: colors.brand600,
         headerTitleStyle: { fontFamily: typography.fontFamilyBold },
+        headerShown:false
       }}
     >
       <Stack.Screen name="businesses" options={{ title: "Business management" }} />

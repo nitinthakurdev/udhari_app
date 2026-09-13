@@ -11,18 +11,36 @@ import { SymbolView } from "expo-symbols";
 import { useState } from "react";
 import { Alert, Modal, StyleSheet, Text, View } from "react-native";
 
+interface UnitForm {
+  name: string;
+  code: string;
+  type: string;
+  factor: string;
+}
+
+const emptyForm: UnitForm = { name: "", code: "", type: "", factor: "1" };
+
 export default function UnitsScreen() {
   const queryClient = useQueryClient();
   const unitsQuery = useQuery({ queryKey: ["units"], queryFn: getUnits });
   const [editing, setEditing] = useState<Unit | null | undefined>(undefined);
-  const [name, setName] = useState("");
+  const [form, setForm] = useState<UnitForm>(emptyForm);
   const saveMutation = useMutation({
-    mutationFn: () =>
-      editing ? updateUnit(editing.uuid, name.trim()) : createUnit(name.trim()),
+    mutationFn: () => {
+      const payload = {
+        name: form.name.trim(),
+        code: form.code.trim().toLowerCase(),
+        type: form.type.trim().toLowerCase(),
+        factor: Number(form.factor),
+      };
+      return editing
+        ? updateUnit(editing.uuid, payload)
+        : createUnit(payload);
+    },
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ["units"] });
       setEditing(undefined);
-      setName("");
+      setForm(emptyForm);
       Alert.alert("Saved", response.message ?? "Unit saved successfully.");
     },
     onError: (error) => Alert.alert("Could not save unit", getApiError(error).message),
@@ -39,11 +57,32 @@ export default function UnitsScreen() {
 
   const openForm = (unit: Unit | null) => {
     setEditing(unit);
-    setName(unit?.name ?? "");
+    setForm(
+      unit
+        ? {
+            name: unit.name,
+            code: unit.code,
+            type: unit.type,
+            factor: String(unit.factor),
+          }
+        : emptyForm,
+    );
   };
   const submit = () => {
-    if (name.trim().length < 1 || name.trim().length > 30) {
-      Alert.alert("Invalid unit", "Enter a unit name of up to 30 characters.");
+    if (form.name.trim().length < 1 || form.name.trim().length > 50) {
+      Alert.alert("Invalid unit", "Enter a unit name of up to 50 characters.");
+      return;
+    }
+    if (!/^[a-zA-Z][a-zA-Z0-9._-]{0,19}$/.test(form.code.trim())) {
+      Alert.alert("Invalid code", "Enter a short code such as kg, ml, or pcs.");
+      return;
+    }
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,29}$/.test(form.type.trim())) {
+      Alert.alert("Invalid type", "Enter a type such as weight, volume, or count.");
+      return;
+    }
+    if (!Number.isFinite(Number(form.factor)) || Number(form.factor) <= 0) {
+      Alert.alert("Invalid factor", "Conversion factor must be greater than zero.");
       return;
     }
     saveMutation.mutate();
@@ -90,6 +129,9 @@ export default function UnitsScreen() {
               </View>
               <View style={styles.grow}>
                 <Text style={styles.name}>{unit.name}</Text>
+                <Text style={styles.unitMeta}>
+                  {unit.code} · {unit.type} · factor {unit.factor}
+                </Text>
                 <Text style={styles.scope}>{unit.can_manage ? "Business unit" : "System unit"}</Text>
               </View>
               {unit.can_manage ? (
@@ -112,7 +154,10 @@ export default function UnitsScreen() {
         <View style={styles.overlay}>
           <View style={styles.dialog}>
             <Text style={styles.dialogTitle}>{editing ? "Edit unit" : "Add unit"}</Text>
-            <Input label="Unit name" value={name} onChangeText={setName} placeholder="For example, kg" autoFocus maxLength={30} />
+            <Input label="Unit name" value={form.name} onChangeText={(name) => setForm((current) => ({ ...current, name }))} placeholder="Kilogram" autoFocus maxLength={50} />
+            <Input label="Code" value={form.code} onChangeText={(code) => setForm((current) => ({ ...current, code }))} placeholder="kg" autoCapitalize="none" maxLength={20} />
+            <Input label="Type" value={form.type} onChangeText={(type) => setForm((current) => ({ ...current, type }))} placeholder="weight" autoCapitalize="none" maxLength={30} />
+            <Input label="Conversion factor" value={form.factor} onChangeText={(factor) => setForm((current) => ({ ...current, factor }))} placeholder="1" keyboardType="decimal-pad" />
             <View style={styles.dialogActions}>
               <Button label="Cancel" variant="ghost" onPress={() => setEditing(undefined)} />
               <Button label="Save" loading={saveMutation.isPending} onPress={submit} />
@@ -147,6 +192,7 @@ const styles = StyleSheet.create({
   },
   grow: { flex: 1, minWidth: 100 },
   name: { color: colors.ink, fontFamily: typography.fontFamilyExtraBold, fontSize: 15 },
+  unitMeta: { color: colors.brand600, fontFamily: typography.fontFamilyBold, fontSize: 10, marginTop: 2 },
   scope: { color: colors.slate500, fontFamily: typography.fontFamilyRegular, fontSize: 10, marginTop: 2 },
   actions: { flexDirection: "row", gap: spacing.xs },
   overlay: {

@@ -95,6 +95,7 @@ export interface BusinessConnection {
   uuid: string;
   connect_user_id: number;
   business_id: number;
+  source_business_id: number | null;
   created_by: number;
   role: string;
   request_status: "pending" | "approved" | "rejected";
@@ -103,6 +104,7 @@ export interface BusinessConnection {
   connected_user: ConnectionUser | null;
   creator: ConnectionUser | null;
   business: Pick<Business, "uuid" | "name" | "slug"> | null;
+  source_business: Pick<Business, "uuid" | "name" | "slug"> | null;
 }
 
 export interface ConnectionRequests {
@@ -112,16 +114,20 @@ export interface ConnectionRequests {
 
 export interface Transition {
   uuid: string;
-  user_id: number;
+  customer_user_id: number;
+  customer_business_id: number | null;
   business_id: number;
+  business_user_id: number;
   unit_id: number;
   product_name: string;
   product_qty: number;
-  product_price: number;
+  product_unit_price: number;
   total_price: number;
-  status: string;
-  approved_by_user: boolean;
-  approved_by_business: boolean;
+  request_status:
+    "pending" | "approved" | "rejected" | "not_available" | "cancelled";
+  payment_status: "paid" | "unpaid";
+  balance_type: "payable" | "receivable";
+  account_type: "payable" | "receivable";
   comment: string | null;
   created_by: number | null;
   created_at: string;
@@ -129,13 +135,16 @@ export interface Transition {
 }
 
 export interface TransitionCreatePayload {
-  user_id: number;
+  customer_user_id?: number;
+  customer_business_id?: number | null;
   business_id: number;
   unit_id: number;
   product_name: string;
-  product_price: number;
+  product_unit_price: number;
   total_price: number;
   product_qty?: number;
+  customer_business_uuid?: string;
+  balance_type?: "payable" | "receivable";
   comment?: string | null;
 }
 
@@ -145,10 +154,10 @@ export type TransitionUpdatePayload = Partial<
     | "product_name"
     | "unit_id"
     | "product_qty"
-    | "product_price"
+    | "product_unit_price"
     | "total_price"
-    | "approved_by_user"
-    | "approved_by_business"
+    | "request_status"
+    | "balance_type"
     | "comment"
   >
 >;
@@ -157,6 +166,9 @@ export interface Unit {
   id: number;
   uuid: string;
   name: string;
+  code: string;
+  type: string;
+  factor: number;
   can_manage: boolean;
   created_at: string;
   updated_at: string;

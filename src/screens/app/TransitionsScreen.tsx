@@ -10,10 +10,11 @@ import {
 } from "@/lib/api/connections";
 import { getApiError } from "@/lib/api/errors";
 import {
+  cancelTransition,
   createTransition,
-  deleteTransition,
   getBusinessTransitions,
   getTransitions,
+  markTransitionPaymentReceived,
   updateTransition,
 } from "@/lib/api/transitions";
 import { getBusinessUnits } from "@/lib/api/units";
@@ -44,6 +45,7 @@ interface TransitionForm {
   productName: string;
   quantity: string;
   productPrice: string;
+  balanceType: "payable" | "receivable";
   comment: string;
 }
 
@@ -55,6 +57,7 @@ const emptyForm: TransitionForm = {
   productName: "",
   quantity: "1",
   productPrice: "",
+  balanceType: "payable",
   comment: "",
 };
 
@@ -72,6 +75,8 @@ export default function TransitionsScreen() {
   const [targetUuid, setTargetUuid] = useState("");
   const [unitId, setUnitId] = useState("");
   const [form, setForm] = useState<TransitionForm>(emptyForm);
+  const [counterpartyType, setCounterpartyType] = useState<"user" | "business">("user");
+  const [view, setView] = useState<"active" | "unpaid" | "cancelled">("active");
 
   const transitionsQuery = useQuery({
     queryKey: transitionQueryKey,
@@ -81,15 +86,15 @@ export default function TransitionsScreen() {
         : getTransitions(),
     enabled: !businessMode || Boolean(activeBusiness?.uuid),
   });
-  const connectionsQuery = useQuery({
-    queryKey: businessMode
-      ? ["connected-users", activeBusiness?.uuid]
-      : ["business-connections"],
+  const customerConnectionsQuery = useQuery({
+    queryKey: ["connected-users", activeBusiness?.uuid],
+    queryFn: () => getConnectedUsers(activeBusiness?.uuid ?? ""),
+    enabled: businessMode && Boolean(activeBusiness?.uuid),
+  });
+  const businessConnectionsQuery = useQuery({
+    queryKey: ["business-connections", businessMode ? activeBusiness?.uuid : "user"],
     queryFn: () =>
-      businessMode
-        ? getConnectedUsers(activeBusiness?.uuid ?? "")
-        : getBusinessConnections(),
-    enabled: !businessMode || Boolean(activeBusiness?.uuid),
+      getBusinessConnections(businessMode ? activeBusiness?.uuid : undefined),
   });
   const saveMutation = useMutation({
     mutationFn: (request: SaveRequest) =>
@@ -104,35 +109,68 @@ export default function TransitionsScreen() {
         response.message ?? "Transition saved successfully.",
       );
     },
-    onError: (error) =>
-      Alert.alert("Could not save transition", getApiError(error).message),
+    onError: (error) => {
+      const apiError = getApiError(error);
+      Alert.alert(
+        "Could not save transition",
+        apiError.details[0]?.message ?? apiError.message,
+      );
+    },
   });
   const approvalMutation = useMutation({
     mutationFn: ({ uuid }: { uuid: string }) =>
-      updateTransition(uuid, {
-        [businessMode ? "approved_by_business" : "approved_by_user"]: true,
-      }),
+      updateTransition(uuid, { request_status: "approved" }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: transitionQueryKey });
     },
     onError: (error) =>
       Alert.alert("Could not update approval", getApiError(error).message),
   });
-  const deleteMutation = useMutation({
-    mutationFn: deleteTransition,
+  const cancelMutation = useMutation({
+    mutationFn: cancelTransition,
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: transitionQueryKey });
       Alert.alert(
-        "Deleted",
-        response.message ?? "Transition deleted successfully.",
+        "Cancelled",
+        response.message ?? "Transition cancelled successfully.",
       );
     },
     onError: (error) =>
-      Alert.alert("Could not delete transition", getApiError(error).message),
+      Alert.alert("Could not cancel transition", getApiError(error).message),
+  });
+  const paymentMutation = useMutation({
+    mutationFn: markTransitionPaymentReceived,
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: transitionQueryKey });
+      Alert.alert(
+        "Payment received",
+        response.message ?? "Payment marked as received.",
+      );
+    },
+    onError: (error) =>
+      Alert.alert("Could not receive payment", getApiError(error).message),
   });
 
-  const connections = connectionsQuery.data?.data ?? [];
+  const customerConnections = customerConnectionsQuery.data?.data ?? [];
+  const businessConnections = businessConnectionsQuery.data?.data ?? [];
+  const connections =
+    businessMode && counterpartyType === "user"
+      ? customerConnections
+      : businessConnections;
+  const allConnections = businessMode
+    ? [...customerConnections, ...businessConnections]
+    : businessConnections;
   const transitions = transitionsQuery.data?.data ?? [];
+  const visibleTransitions = transitions.filter((transition) => {
+    if (view === "cancelled") return transition.request_status === "cancelled";
+    if (view === "unpaid") {
+      return (
+        transition.request_status === "approved" &&
+        transition.payment_status === "unpaid"
+      );
+    }
+    return transition.request_status !== "cancelled";
+  });
   const selectedConnection = connections.find(
     (connection) => connection.uuid === targetUuid,
   );
@@ -157,27 +195,38 @@ export default function TransitionsScreen() {
     setForm(emptyForm);
   };
 
-  const openCreate = () => {
+  const openCreate = (type: "user" | "business" = "business") => {
+    const availableConnections =
+      businessMode && type === "user" ? customerConnections : businessConnections;
+    setCounterpartyType(type);
     setEditing(null);
-    setTargetUuid(connections[0]?.uuid ?? "");
+    setTargetUuid(availableConnections[0]?.uuid ?? "");
     setUnitId("");
     setForm(emptyForm);
     setFormOpen(true);
   };
 
   const openEdit = (transition: Transition) => {
+    const isBusinessTransition = transition.customer_business_id !== null;
+    const editingConnections = isBusinessTransition
+      ? businessConnections
+      : businessMode
+        ? customerConnections
+        : businessConnections;
     const target = findConnectionForTransition(
       transition,
-      connections,
+      editingConnections,
       businessMode,
     );
+    setCounterpartyType(isBusinessTransition ? "business" : "user");
     setEditing(transition);
     setTargetUuid(target?.uuid ?? "");
     setUnitId(String(transition.unit_id));
     setForm({
       productName: transition.product_name,
       quantity: String(transition.product_qty),
-      productPrice: String(transition.product_price),
+      productPrice: String(transition.product_unit_price),
+      balanceType: transition.balance_type,
       comment: transition.comment ?? "",
     });
     setFormOpen(true);
@@ -193,11 +242,8 @@ export default function TransitionsScreen() {
       Alert.alert("Product required", "Enter at least two characters.");
       return;
     }
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      Alert.alert(
-        "Invalid quantity",
-        "Quantity must be a positive whole number.",
-      );
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      Alert.alert("Invalid quantity", "Quantity must be greater than zero.");
       return;
     }
     if (
@@ -220,7 +266,7 @@ export default function TransitionsScreen() {
     const commonPayload = {
       product_name: productName,
       product_qty: quantity,
-      product_price: productPrice,
+      product_unit_price: productPrice,
       total_price: totalPrice,
       unit_id: selectedUnitId,
       comment: form.comment.trim() || null,
@@ -230,7 +276,12 @@ export default function TransitionsScreen() {
       saveMutation.mutate({
         mode: "update",
         uuid: editing.uuid,
-        payload: commonPayload,
+        payload: {
+          ...commonPayload,
+          ...(editing.customer_business_id !== null
+            ? { balance_type: form.balanceType }
+            : {}),
+        },
       });
       return;
     }
@@ -240,8 +291,22 @@ export default function TransitionsScreen() {
     );
     if (!target) {
       Alert.alert(
-        businessMode ? "Select a customer" : "Select a business",
+        businessMode && counterpartyType === "user"
+          ? "Select a customer"
+          : "Select a business",
         "Choose a connected account before saving.",
+      );
+      return;
+    }
+
+    const targetBusinessId = getCounterpartyBusinessId(
+      target,
+      businessMode ? activeBusiness?.uuid : undefined,
+    );
+    if (!targetBusinessId) {
+      Alert.alert(
+        "Business unavailable",
+        "The selected connected business is no longer available. Refresh and try again.",
       );
       return;
     }
@@ -250,27 +315,52 @@ export default function TransitionsScreen() {
       mode: "create",
       payload: {
         ...commonPayload,
-        user_id: target.created_by,
-        business_id: target.business_id,
+        business_id: targetBusinessId,
+        ...(businessMode && counterpartyType === "business"
+          ? {
+              customer_business_uuid: activeBusiness?.uuid,
+              balance_type: form.balanceType,
+            }
+          : businessMode
+            ? { customer_user_id: getConnectionUserId(target) }
+          : {}),
       },
     });
   };
 
-  const confirmDelete = (transition: Transition) => {
-    Alert.alert("Delete transition?", `Delete ${transition.product_name}?`, [
+  const confirmCancel = (transition: Transition) => {
+    Alert.alert("Cancel transition?", `Cancel ${transition.product_name}?`, [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Delete",
+        text: "Confirm",
         style: "destructive",
-        onPress: () => deleteMutation.mutate(transition.uuid),
+        onPress: () => cancelMutation.mutate(transition.uuid),
       },
     ]);
   };
 
-  const refreshing = transitionsQuery.isFetching || connectionsQuery.isFetching;
+  const confirmPaymentReceived = (transition: Transition) => {
+    Alert.alert(
+      "Confirm payment received?",
+      `Mark payment for ${transition.product_name} as received? This will remove it from unpaid balances.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Payment received",
+          onPress: () => paymentMutation.mutate(transition.uuid),
+        },
+      ],
+    );
+  };
+
+  const refreshing =
+    transitionsQuery.isFetching ||
+    customerConnectionsQuery.isFetching ||
+    businessConnectionsQuery.isFetching;
   const refresh = () => {
     void transitionsQuery.refetch();
-    void connectionsQuery.refetch();
+    void customerConnectionsQuery.refetch();
+    void businessConnectionsQuery.refetch();
   };
 
   return (
@@ -291,13 +381,20 @@ export default function TransitionsScreen() {
           title="Select a business"
           message="Choose a business before viewing its transitions."
         />
-      ) : transitionsQuery.isPending || connectionsQuery.isPending ? (
+      ) : transitionsQuery.isPending ||
+        businessConnectionsQuery.isPending ||
+        (businessMode && customerConnectionsQuery.isPending) ? (
         <LoadingState label="Loading transitions…" />
-      ) : transitionsQuery.isError || connectionsQuery.isError ? (
+      ) : transitionsQuery.isError ||
+        businessConnectionsQuery.isError ||
+        (businessMode && customerConnectionsQuery.isError) ? (
         <ErrorState
           message={
-            getApiError(transitionsQuery.error ?? connectionsQuery.error)
-              .message
+            getApiError(
+              transitionsQuery.error ??
+                customerConnectionsQuery.error ??
+                businessConnectionsQuery.error,
+            ).message
           }
           retry={refresh}
         />
@@ -310,15 +407,70 @@ export default function TransitionsScreen() {
                 {transitions.length} entries
               </Text>
             </View>
-            <Button
-              label="Add entry"
-              size="sm"
-              disabled={connections.length === 0}
-              onPress={openCreate}
-            />
+            <View style={styles.headerActions}>
+              {businessMode ? (
+                <>
+                  <Button
+                    label="With user"
+                    size="sm"
+                    disabled={customerConnections.length === 0}
+                    onPress={() => openCreate("user")}
+                  />
+                  <Button
+                    label="With business"
+                    size="sm"
+                    variant="outline"
+                    disabled={businessConnections.length === 0}
+                    onPress={() => openCreate("business")}
+                  />
+                </>
+              ) : (
+                <Button
+                  label="Add entry"
+                  size="sm"
+                  disabled={businessConnections.length === 0}
+                  onPress={() => openCreate("business")}
+                />
+              )}
+            </View>
           </View>
 
-          {connections.length === 0 ? (
+          <View style={styles.tabs}>
+            {(["active", "unpaid", "cancelled"] as const).map((tab) => {
+              const count = transitions.filter((transition) =>
+                tab === "cancelled"
+                  ? transition.request_status === "cancelled"
+                  : tab === "unpaid"
+                    ? transition.request_status === "approved" &&
+                      transition.payment_status === "unpaid"
+                    : transition.request_status !== "cancelled",
+              ).length;
+              const selected = view === tab;
+              return (
+                <Pressable
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected }}
+                  key={tab}
+                  onPress={() => setView(tab)}
+                  style={[styles.tab, selected && styles.tabSelected]}
+                >
+                  <Text
+                    style={[styles.tabText, selected && styles.tabTextSelected]}
+                  >
+                    {tab === "active"
+                      ? "Active"
+                      : tab === "unpaid"
+                        ? "Unpaid transitions"
+                        : "Cancelled"} ({count})
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {view === "active" &&
+          connections.length === 0 &&
+          visibleTransitions.length === 0 ? (
             <EmptyState
               title={
                 businessMode
@@ -331,25 +483,37 @@ export default function TransitionsScreen() {
                   : "Connect with a business before you can add an entry."
               }
             />
-          ) : transitions.length === 0 ? (
+          ) : visibleTransitions.length === 0 ? (
             <EmptyState
-              title="No transitions yet"
-              message="Add the first shared ledger entry."
+              title={
+                view === "cancelled"
+                  ? "No cancelled transitions"
+                  : view === "unpaid"
+                    ? "No unpaid transitions"
+                    : "No transitions yet"
+              }
+              message={
+                view === "cancelled"
+                  ? "Cancelled transitions will appear here."
+                  : view === "unpaid"
+                    ? "Approved unpaid transitions will appear here."
+                    : "Add the first shared ledger entry."
+              }
             />
           ) : (
             <View style={styles.cards}>
-              {transitions.map((transition) => {
+              {visibleTransitions.map((transition) => {
                 const connection = findConnectionForTransition(
                   transition,
-                  connections,
+                  allConnections,
                   businessMode,
                 );
-                const ownApproval = businessMode
-                  ? transition.approved_by_business
-                  : transition.approved_by_user;
-                const locked =
-                  transition.approved_by_user &&
-                  transition.approved_by_business;
+                const locked = transition.request_status !== "pending";
+                const currentIsCustomerSide =
+                  transition.account_type === transition.balance_type;
+                const createdByCurrentSide = currentIsCustomerSide
+                  ? transition.created_by === transition.customer_user_id
+                  : transition.created_by === transition.business_user_id;
 
                 return (
                   <View style={styles.card} key={transition.uuid}>
@@ -371,7 +535,12 @@ export default function TransitionsScreen() {
                         </Text>
                         <Text style={styles.counterpart}>
                           {connection
-                            ? getConnectionLabel(connection, businessMode)
+                            ? getConnectionLabel(
+                                connection,
+                                businessMode,
+                                transition.customer_business_id !== null,
+                                activeBusiness?.uuid,
+                              )
                             : "Connected account"}
                         </Text>
                       </View>
@@ -385,7 +554,7 @@ export default function TransitionsScreen() {
                         Qty {transition.product_qty}
                       </Text>
                       <Text style={styles.quantity}>
-                        {formatAmount(transition.product_price)} each
+                        {formatAmount(transition.product_unit_price)} each
                       </Text>
                       <Text style={styles.date}>
                         {formatDate(transition.created_at)}
@@ -396,20 +565,66 @@ export default function TransitionsScreen() {
                       <Text style={styles.comment}>{transition.comment}</Text>
                     ) : null}
 
+                    {transition.request_status !== "approved" ? (
+                      <View style={styles.approvals}>
+                        <Text
+                          style={[
+                            styles.approvalText,
+                            transition.request_status === "cancelled" &&
+                              styles.cancelledText,
+                          ]}
+                        >
+                          {transition.request_status === "cancelled"
+                            ? "Cancelled"
+                            : "Pending approval"}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     <View style={styles.approvals}>
-                      <Approval
-                        approved={transition.approved_by_user}
-                        label="User"
-                      />
-                      <Approval
-                        approved={transition.approved_by_business}
-                        label="Business"
-                      />
+                      <Text
+                        style={[
+                          styles.paymentStatus,
+                          transition.account_type === "receivable" &&
+                            styles.paymentStatusPaid,
+                        ]}
+                      >
+                        {transition.account_type === "receivable"
+                          ? "Receivable"
+                          : "Payable"}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.paymentStatus,
+                          transition.payment_status === "paid" &&
+                            styles.paymentStatusPaid,
+                        ]}
+                      >
+                        {transition.payment_status === "paid"
+                          ? "Paid"
+                          : "Unpaid"}
+                      </Text>
                     </View>
+
+                    {businessMode &&
+                    view === "unpaid" &&
+                    transition.account_type === "receivable" ? (
+                      <View style={styles.actions}>
+                        <Button
+                          label="Payment received"
+                          size="sm"
+                          loading={
+                            paymentMutation.isPending &&
+                            paymentMutation.variables === transition.uuid
+                          }
+                          onPress={() => confirmPaymentReceived(transition)}
+                        />
+                      </View>
+                    ) : null}
 
                     {!locked ? (
                       <View style={styles.actions}>
-                        {!ownApproval ? (
+                        {!createdByCurrentSide ? (
                           <Button
                             label="Approve"
                             size="sm"
@@ -425,22 +640,26 @@ export default function TransitionsScreen() {
                             }
                           />
                         ) : null}
-                        <Button
-                          label="Edit"
-                          size="sm"
-                          variant="outline"
-                          onPress={() => openEdit(transition)}
-                        />
-                        <Button
-                          label="Delete"
-                          size="sm"
-                          variant="danger"
-                          loading={
-                            deleteMutation.isPending &&
-                            deleteMutation.variables === transition.uuid
-                          }
-                          onPress={() => confirmDelete(transition)}
-                        />
+                        {createdByCurrentSide ? (
+                          <>
+                            <Button
+                              label="Edit"
+                              size="sm"
+                              variant="outline"
+                              onPress={() => openEdit(transition)}
+                            />
+                            <Button
+                              label="Cancel"
+                              size="sm"
+                              variant="danger"
+                              loading={
+                                cancelMutation.isPending &&
+                                cancelMutation.variables === transition.uuid
+                              }
+                              onPress={() => confirmCancel(transition)}
+                            />
+                          </>
+                        ) : null}
                       </View>
                     ) : null}
                   </View>
@@ -452,7 +671,9 @@ export default function TransitionsScreen() {
       )}
 
       <TransitionFormModal
+        activeBusinessUuid={activeBusiness?.uuid}
         businessMode={businessMode}
+        counterpartyType={counterpartyType}
         connections={connections}
         editing={editing}
         form={form}
@@ -476,7 +697,9 @@ export default function TransitionsScreen() {
 }
 
 function TransitionFormModal({
+  activeBusinessUuid,
   businessMode,
+  counterpartyType,
   connections,
   editing,
   form,
@@ -493,7 +716,9 @@ function TransitionFormModal({
   onSelectUnit,
   onSubmit,
 }: {
+  activeBusinessUuid?: string;
   businessMode: boolean;
+  counterpartyType: "user" | "business";
   connections: BusinessConnection[];
   editing: Transition | null;
   form: TransitionForm;
@@ -510,8 +735,12 @@ function TransitionFormModal({
   onSelectUnit: (id: string) => void;
   onSubmit: () => void;
 }) {
-  const update = (field: keyof TransitionForm, value: string) =>
-    onChange({ ...form, [field]: value });
+  const update = <Field extends keyof TransitionForm>(
+    field: Field,
+    value: TransitionForm[Field],
+  ) => onChange({ ...form, [field]: value });
+  const selectedUnit = units.find((unit) => String(unit.id) === unitId);
+  const unitSuffix = selectedUnit?.code ? ` / ${selectedUnit.code}` : "";
 
   return (
     <Modal
@@ -549,30 +778,69 @@ function TransitionFormModal({
             {!editing ? (
               <View>
                 <Text style={styles.inputLabel}>
-                  {businessMode ? "Connected customer" : "Connected business"}
+                  {businessMode && counterpartyType === "user"
+                    ? "Connected customer"
+                    : "Connected business"}
                 </Text>
-                <View style={styles.targets}>
-                  {connections.map((connection) => (
-                    <Pressable
-                      key={connection.uuid}
-                      onPress={() => onSelectTarget(connection.uuid)}
-                      style={[
-                        styles.target,
-                        targetUuid === connection.uuid && styles.targetSelected,
-                      ]}
-                    >
-                      <Text
-                        numberOfLines={1}
+                {!businessMode || counterpartyType === "business" ? (
+                  <ConnectionDropdown
+                    activeBusinessUuid={activeBusinessUuid}
+                    businessMode={businessMode}
+                    connections={connections}
+                    value={targetUuid}
+                    onChange={onSelectTarget}
+                  />
+                ) : (
+                  <View style={styles.targets}>
+                    {connections.map((connection) => (
+                      <Pressable
+                        key={connection.uuid}
+                        onPress={() => onSelectTarget(connection.uuid)}
                         style={[
-                          styles.targetText,
-                          targetUuid === connection.uuid &&
-                            styles.targetTextSelected,
+                          styles.target,
+                          targetUuid === connection.uuid && styles.targetSelected,
                         ]}
                       >
-                        {getConnectionLabel(connection, businessMode)}
-                      </Text>
-                    </Pressable>
-                  ))}
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.targetText,
+                            targetUuid === connection.uuid &&
+                              styles.targetTextSelected,
+                          ]}
+                        >
+                          {getConnectionLabel(connection, businessMode, false)}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : null}
+
+            {businessMode && counterpartyType === "business" ? (
+              <View>
+                <Text style={styles.inputLabel}>Balance type for your business</Text>
+                <View style={styles.targets}>
+                  {(["payable", "receivable"] as const).map((type) => {
+                    const selected = form.balanceType === type;
+                    return (
+                      <Pressable
+                        key={type}
+                        onPress={() => update("balanceType", type)}
+                        style={[styles.target, selected && styles.targetSelected]}
+                      >
+                        <Text
+                          style={[
+                            styles.targetText,
+                            selected && styles.targetTextSelected,
+                          ]}
+                        >
+                          {type === "payable" ? "Payable" : "Receivable"}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
             ) : null}
@@ -593,14 +861,14 @@ function TransitionFormModal({
             />
             <View style={styles.formRow}>
               <Input
-                label="Quantity"
+                label={`Qty${unitSuffix}`}
                 value={form.quantity}
-                keyboardType="number-pad"
+                keyboardType="decimal-pad"
                 onChangeText={(value) => update("quantity", value)}
                 containerStyle={styles.formField}
               />
               <Input
-                label="Unit price"
+                label={`Unit price${unitSuffix}`}
                 value={form.productPrice}
                 keyboardType="decimal-pad"
                 placeholder="0.00"
@@ -636,6 +904,118 @@ function TransitionFormModal({
   );
 }
 
+function ConnectionDropdown({
+  activeBusinessUuid,
+  businessMode,
+  connections,
+  value,
+  onChange,
+}: {
+  activeBusinessUuid?: string;
+  businessMode: boolean;
+  connections: BusinessConnection[];
+  value: string;
+  onChange: (uuid: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const selectedConnection = connections.find(
+    (connection) => connection.uuid === value,
+  );
+  const selectedLabel = selectedConnection
+    ? getConnectionLabel(
+        selectedConnection,
+        businessMode,
+        true,
+        activeBusinessUuid,
+      )
+    : "Select a connected business";
+
+  return (
+    <View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded((current) => !current)}
+        style={({ pressed }) => [
+          styles.dropdownTrigger,
+          pressed && styles.dropdownPressed,
+        ]}
+      >
+        <View style={styles.dropdownValue}>
+          <SymbolView
+            name={{ ios: "building.2", android: "business", web: "business" }}
+            size={18}
+            tintColor={colors.brand600}
+          />
+          <Text
+            numberOfLines={1}
+            style={
+              selectedConnection
+                ? styles.dropdownText
+                : styles.dropdownPlaceholder
+            }
+          >
+            {selectedLabel}
+          </Text>
+        </View>
+        <SymbolView
+          name={{
+            ios: expanded ? "chevron.up" : "chevron.down",
+            android: expanded ? "arrow_drop_up" : "arrow_drop_down",
+            web: expanded ? "arrow_drop_up" : "arrow_drop_down",
+          }}
+          size={18}
+          tintColor={colors.slate500}
+        />
+      </Pressable>
+
+      {expanded ? (
+        <View style={styles.dropdownMenu}>
+          {connections.map((connection) => {
+            const selected = connection.uuid === value;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                key={connection.uuid}
+                onPress={() => {
+                  onChange(connection.uuid);
+                  setExpanded(false);
+                }}
+                style={[
+                  styles.dropdownOption,
+                  selected && styles.dropdownOptionSelected,
+                ]}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.dropdownOptionText,
+                    selected && styles.dropdownOptionTextSelected,
+                  ]}
+                >
+                  {getConnectionLabel(
+                    connection,
+                    businessMode,
+                    true,
+                    activeBusinessUuid,
+                  )}
+                </Text>
+                {selected ? (
+                  <SymbolView
+                    name={{ ios: "checkmark", android: "check", web: "check" }}
+                    size={16}
+                    tintColor={colors.brand600}
+                  />
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function UnitDropdown({
   error,
   loading,
@@ -667,11 +1047,23 @@ function UnitDropdown({
           pressed && !disabled && styles.dropdownPressed,
         ]}
       >
-        <Text style={selectedUnit ? styles.dropdownText : styles.dropdownPlaceholder}>
-          {selectedUnit?.name ?? (loading ? "Loading units…" : "No units available")}
+        <Text
+          style={
+            selectedUnit ? styles.dropdownText : styles.dropdownPlaceholder
+          }
+        >
+          {selectedUnit
+            ? `${selectedUnit.name} (${selectedUnit.code})`
+            : loading
+              ? "Loading units…"
+              : "No units available"}
         </Text>
         <SymbolView
-          name={{ ios: "chevron.down", android: "arrow_drop_down", web: "arrow_drop_down" }}
+          name={{
+            ios: "chevron.down",
+            android: "arrow_drop_down",
+            web: "arrow_drop_down",
+          }}
           size={18}
           tintColor={colors.slate500}
         />
@@ -690,12 +1082,18 @@ function UnitDropdown({
                   onChange(String(unit.id));
                   setExpanded(false);
                 }}
-                style={[styles.dropdownOption, selected && styles.dropdownOptionSelected]}
+                style={[
+                  styles.dropdownOption,
+                  selected && styles.dropdownOptionSelected,
+                ]}
               >
                 <Text
-                  style={[styles.dropdownOptionText, selected && styles.dropdownOptionTextSelected]}
+                  style={[
+                    styles.dropdownOptionText,
+                    selected && styles.dropdownOptionTextSelected,
+                  ]}
                 >
-                  {unit.name}
+                  {unit.name} ({unit.code})
                 </Text>
                 {selected ? (
                   <SymbolView
@@ -715,48 +1113,68 @@ function UnitDropdown({
   );
 }
 
-function Approval({ approved, label }: { approved: boolean; label: string }) {
-  return (
-    <View style={[styles.approval, approved && styles.approvalDone]}>
-      <SymbolView
-        name={{
-          ios: approved ? "checkmark.circle.fill" : "clock",
-          android: approved ? "check_circle" : "schedule",
-          web: approved ? "check_circle" : "schedule",
-        }}
-        size={14}
-        tintColor={approved ? "#047857" : colors.slate500}
-      />
-      <Text style={[styles.approvalText, approved && styles.approvalTextDone]}>
-        {label} {approved ? "approved" : "pending"}
-      </Text>
-    </View>
-  );
-}
-
 function findConnectionForTransition(
   transition: Transition,
   connections: BusinessConnection[],
   businessMode: boolean,
 ) {
+  if (transition.customer_business_id !== null) {
+    return connections.find(
+      (connection) =>
+        connection.source_business_id !== null &&
+        ((connection.source_business_id === transition.customer_business_id &&
+          connection.business_id === transition.business_id) ||
+          (connection.source_business_id === transition.business_id &&
+            connection.business_id === transition.customer_business_id)),
+    );
+  }
+
   return connections.find((connection) =>
     businessMode
-      ? connection.created_by === transition.user_id &&
+      ? getConnectionUserId(connection) === transition.customer_user_id &&
         connection.business_id === transition.business_id
       : connection.business_id === transition.business_id,
   );
 }
 
+function getConnectionUserId(connection: BusinessConnection) {
+  return connection.role === "business"
+    ? connection.connect_user_id
+    : connection.created_by;
+}
+
 function getConnectionLabel(
   connection: BusinessConnection,
   businessMode: boolean,
+  businessCounterparty = false,
+  activeBusinessUuid?: string,
 ) {
-  if (!businessMode) return connection.business?.name ?? "Unavailable business";
+  if (!businessMode) {
+    return connection.business?.name ?? "Unavailable business";
+  }
+  if (businessCounterparty) {
+    return connection.business?.uuid === activeBusinessUuid
+      ? connection.source_business?.name ?? "Unavailable business"
+      : connection.business?.name ?? "Unavailable business";
+  }
 
-  const user = connection.creator;
+  const user =
+    connection.role === "business"
+      ? connection.connected_user
+      : connection.creator;
   return user
     ? [user.first_name, user.last_name].filter(Boolean).join(" ")
     : "Unavailable customer";
+}
+
+function getCounterpartyBusinessId(
+  connection: BusinessConnection,
+  activeBusinessUuid?: string,
+) {
+  if (activeBusinessUuid && connection.business?.uuid === activeBusinessUuid) {
+    return connection.source_business_id;
+  }
+  return connection.business_id;
 }
 
 function formatAmount(value: number) {
@@ -786,6 +1204,10 @@ function formatDate(value: string) {
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
+  headerActions: {
+    alignItems: "flex-end",
+    gap: spacing.sm,
+  },
   sectionHeader: {
     alignItems: "center",
     flexDirection: "row",
@@ -802,6 +1224,29 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 3,
   },
+  tabs: {
+    alignSelf: "stretch",
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    padding: 4,
+  },
+  tab: {
+    borderRadius: radii.md,
+    flex: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  tabSelected: { backgroundColor: colors.brand600 },
+  tabText: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 10,
+    textAlign: "center",
+  },
+  tabTextSelected: { color: colors.white },
   cards: { gap: spacing.md },
   card: {
     backgroundColor: colors.white,
@@ -870,6 +1315,18 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilySemiBold,
     fontSize: 9,
   },
+  cancelledText: { color: "#b91c1c" },
+  paymentStatus: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.full,
+    color: colors.slate500,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 9,
+    overflow: "hidden",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  paymentStatusPaid: { backgroundColor: "#ecfdf3", color: "#047857" },
   approvalTextDone: { color: "#047857" },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   modalBackdrop: {
@@ -926,6 +1383,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     minHeight: 48,
     paddingHorizontal: spacing.md,
+  },
+  dropdownValue: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginRight: spacing.sm,
   },
   dropdownDisabled: { backgroundColor: colors.surface, opacity: 0.7 },
   dropdownPressed: { borderColor: colors.brand600 },

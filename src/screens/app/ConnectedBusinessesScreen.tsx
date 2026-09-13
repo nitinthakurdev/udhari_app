@@ -12,6 +12,7 @@ import {
   respondToConnectionRequest,
 } from "@/lib/api/connections";
 import { getApiError } from "@/lib/api/errors";
+import { useAuthStore } from "@/stores/authStore";
 import type { BusinessConnection } from "@/types/models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
@@ -20,13 +21,27 @@ import { Alert, StyleSheet, Text, View } from "react-native";
 
 const connectionQueryKey = ["business-connections"] as const;
 
+function getCounterpartBusiness(
+  connection: BusinessConnection,
+  activeBusinessUuid?: string,
+) {
+  return connection.source_business?.uuid === activeBusinessUuid
+    ? connection.business
+    : connection.source_business ?? connection.business;
+}
+
 export default function ConnectedBusinessesScreen() {
   const queryClient = useQueryClient();
+  const role = useAuthStore((state) => state.user?.user_role?.slug);
+  const activeBusiness = useAuthStore((state) => state.activeBusiness);
+  const businessMode = role === "business";
   const [searchInput, setSearchInput] = useState("");
   const [searchKey, setSearchKey] = useState("");
   const connectionsQuery = useQuery({
-    queryKey: connectionQueryKey,
-    queryFn: getBusinessConnections,
+    queryKey: [...connectionQueryKey, businessMode ? activeBusiness?.uuid : "user"],
+    queryFn: () =>
+      getBusinessConnections(businessMode ? activeBusiness?.uuid : undefined),
+    enabled: !businessMode || Boolean(activeBusiness?.uuid),
   });
   const requestsQuery = useQuery({
     queryKey: ["connection-requests"],
@@ -39,7 +54,8 @@ export default function ConnectedBusinessesScreen() {
     staleTime: 60_000,
   });
   const connectMutation = useMutation({
-    mutationFn: connectBusiness,
+    mutationFn: (business: Parameters<typeof connectBusiness>[0]) =>
+      connectBusiness(business, businessMode ? activeBusiness?.uuid : undefined),
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: connectionQueryKey });
       Alert.alert(
@@ -90,7 +106,11 @@ export default function ConnectedBusinessesScreen() {
 
   const connections = connectionsQuery.data?.data ?? [];
   const connectedIds = new Set(
-    connections.map((connection) => connection.business_id),
+    connections.map((connection) =>
+      connection.source_business?.uuid === activeBusiness?.uuid
+        ? connection.business_id
+        : (connection.source_business_id ?? connection.business_id),
+    ),
   );
   const suggestions =
     searchQuery.data?.data.filter(
@@ -105,7 +125,7 @@ export default function ConnectedBusinessesScreen() {
   const confirmDisconnect = (connection: BusinessConnection) => {
     Alert.alert(
       "Disconnect business?",
-      `Remove ${connection.business?.name ?? "this business"} from your connections?`,
+      `Remove ${getCounterpartBusiness(connection, activeBusiness?.uuid)?.name ?? "this business"} from your connections?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -294,10 +314,12 @@ export default function ConnectedBusinessesScreen() {
                 </View>
                 <View style={styles.grow}>
                   <Text numberOfLines={1} style={styles.cardTitle}>
-                    {connection.business?.name ?? "Unavailable business"}
+                    {getCounterpartBusiness(connection, activeBusiness?.uuid)?.name ??
+                      "Unavailable business"}
                   </Text>
                   <Text style={styles.slug}>
-                    /{connection.business?.slug ?? "unavailable"}
+                    /{getCounterpartBusiness(connection, activeBusiness?.uuid)?.slug ??
+                      "unavailable"}
                   </Text>
                 </View>
                 <Text style={styles.badge}>CONNECTED</Text>

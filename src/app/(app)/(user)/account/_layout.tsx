@@ -9,6 +9,7 @@ export default function AccountLayout() {
         headerShadowVisible: false,
         headerTintColor: colors.brand600,
         headerTitleStyle: { fontFamily: typography.fontFamilyBold },
+        headerShown:false
       }}
     >
       <Stack.Screen name="personal-info" options={{ title: "Personal info" }} />
