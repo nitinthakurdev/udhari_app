@@ -23,18 +23,10 @@ export default function UserTabsLayout() {
       shadowColor={colors.line}
     >
       <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Overview</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: "house", selected: "house.fill" }}
           md="home"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="connected-businesses">
-        <NativeTabs.Trigger.Label>Connected</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          sf={{ default: "building.2", selected: "building.2.fill" }}
-          md="business"
         />
       </NativeTabs.Trigger>
 
@@ -49,8 +41,24 @@ export default function UserTabsLayout() {
         />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="requests">
+        <NativeTabs.Trigger.Label>Requests</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "tray", selected: "tray.fill" }}
+          md="inbox"
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="configuration">
+        <NativeTabs.Trigger.Label>Configuration</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "gearshape", selected: "gearshape.fill" }}
+          md="settings"
+        />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="profile">
-        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Account</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{
             default: "person.crop.circle",

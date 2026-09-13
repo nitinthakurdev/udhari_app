@@ -8,6 +8,8 @@ import {
   connectBusiness,
   disconnectBusiness,
   getBusinessConnections,
+  getConnectionRequests,
+  respondToConnectionRequest,
 } from "@/lib/api/connections";
 import { getApiError } from "@/lib/api/errors";
 import type { BusinessConnection } from "@/types/models";
@@ -25,6 +27,10 @@ export default function ConnectedBusinessesScreen() {
   const connectionsQuery = useQuery({
     queryKey: connectionQueryKey,
     queryFn: getBusinessConnections,
+  });
+  const requestsQuery = useQuery({
+    queryKey: ["connection-requests"],
+    queryFn: getConnectionRequests,
   });
   const searchQuery = useQuery({
     queryKey: ["business-search", searchKey],
@@ -56,6 +62,24 @@ export default function ConnectedBusinessesScreen() {
     onError: (error) =>
       Alert.alert("Could not disconnect", getApiError(error).message),
   });
+  const responseMutation = useMutation({
+    mutationFn: ({
+      uuid,
+      status,
+    }: {
+      uuid: string;
+      status: "approved" | "rejected";
+    }) => respondToConnectionRequest(uuid, status),
+    onSuccess: async (response) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: connectionQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["connection-requests"] }),
+      ]);
+      Alert.alert("Request updated", response.message ?? "Connection request updated.");
+    },
+    onError: (error) =>
+      Alert.alert("Could not update request", getApiError(error).message),
+  });
   const normalizedSearch = searchInput.trim();
 
   useEffect(() => {
@@ -72,6 +96,9 @@ export default function ConnectedBusinessesScreen() {
     searchQuery.data?.data.filter(
       (business) => !connectedIds.has(business.business_id),
     ) ?? [];
+  const incomingRequests = (requestsQuery.data?.data.incoming ?? []).filter(
+    (request) => request.role === "business",
+  );
   const searchSettled =
     normalizedSearch.length >= 2 && normalizedSearch === searchKey;
 
@@ -182,6 +209,57 @@ export default function ConnectedBusinessesScreen() {
         ) : null}
       </View>
 
+      {incomingRequests.length > 0 ? (
+        <View style={styles.requestPanel}>
+          <View>
+            <Text style={styles.sectionTitle}>Business invitations</Text>
+            <Text style={styles.sectionCopy}>
+              Review businesses that want to connect with you.
+            </Text>
+          </View>
+          {incomingRequests.map((request) => {
+            const responding =
+              responseMutation.isPending &&
+              responseMutation.variables.uuid === request.uuid;
+            return (
+              <View style={styles.requestRow} key={request.uuid}>
+                <View style={styles.businessIcon}>
+                  <SymbolView
+                    name={{ ios: "building.2", android: "business", web: "business" }}
+                    size={18}
+                    tintColor={colors.brand600}
+                  />
+                </View>
+                <View style={styles.grow}>
+                  <Text numberOfLines={1} style={styles.businessName}>
+                    {request.business?.name ?? "Business invitation"}
+                  </Text>
+                  <Text style={styles.slug}>/{request.business?.slug ?? "business"}</Text>
+                </View>
+                <Button
+                  label="Decline"
+                  variant="ghost"
+                  size="sm"
+                  disabled={responseMutation.isPending}
+                  onPress={() =>
+                    responseMutation.mutate({ uuid: request.uuid, status: "rejected" })
+                  }
+                />
+                <Button
+                  label="Accept"
+                  size="sm"
+                  loading={responding}
+                  disabled={responseMutation.isPending}
+                  onPress={() =>
+                    responseMutation.mutate({ uuid: request.uuid, status: "approved" })
+                  }
+                />
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
       <View>
         <Text style={styles.sectionTitle}>Your connections</Text>
         <Text style={styles.sectionCopy}>{connections.length} connected</Text>
@@ -253,6 +331,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.sm,
     padding: spacing.lg,
+  },
+  requestPanel: {
+    backgroundColor: colors.brand50,
+    borderColor: colors.brand100,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  requestRow: {
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderRadius: radii.md,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    padding: spacing.md,
   },
   panelTitle: {
     color: colors.ink,

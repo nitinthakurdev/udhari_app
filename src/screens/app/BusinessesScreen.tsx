@@ -1,4 +1,5 @@
 import Page from "@/components/app/Page";
+import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -292,6 +293,36 @@ export default function BusinessesScreen() {
                 minLength: { value: 2, message: "Use at least 2 characters." },
               }}
             />
+            <Controller
+              control={form.control}
+              name="address"
+              rules={{
+                required: "Address is required.",
+                minLength: { value: 5, message: "Use at least 5 characters." },
+              }}
+              render={({ field: { onChange, value }, fieldState: { error } }) => (
+                <AddressAutocomplete
+                  value={value}
+                  errorText={error?.message}
+                  onChangeText={onChange}
+                  onAddressSelected={(address) => {
+                    const options = { shouldDirty: true, shouldValidate: true };
+                    form.setValue("address", address.address, options);
+                    if (address.address_2) form.setValue("address_2", address.address_2, options);
+                    if (address.city) form.setValue("city", address.city, options);
+                    if (address.state) form.setValue("state", address.state, options);
+                    if (address.pincode) form.setValue("pincode", address.pincode, options);
+                    if (address.country) form.setValue("country", address.country, options);
+                  }}
+                />
+              )}
+            />
+            <BusinessField
+              control={form.control}
+              name="address_2"
+              label="Additional address"
+              placeholder="Floor, landmark, or area (optional)"
+            />
             <BusinessField
               control={form.control}
               name="country"
@@ -326,22 +357,6 @@ export default function BusinessesScreen() {
                   message: "Enter a 6-digit pincode.",
                 },
               }}
-            />
-            <BusinessField
-              control={form.control}
-              name="address"
-              label="Address"
-              placeholder="Street and locality"
-              rules={{
-                required: "Address is required.",
-                minLength: { value: 5, message: "Use at least 5 characters." },
-              }}
-            />
-            <BusinessField
-              control={form.control}
-              name="address_2"
-              label="Address line 2"
-              placeholder="Landmark (optional)"
             />
             <Button
               label={formBusiness ? "Save changes" : "Create business"}

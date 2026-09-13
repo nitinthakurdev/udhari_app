@@ -68,12 +68,9 @@ export default function BusinessPicker() {
                         tintColor={colors.brand600}
                       />
                     </View>
-                    <View style={styles.optionCopy}>
-                      <Text numberOfLines={1} style={styles.optionName}>
-                        {business.name}
-                      </Text>
-                      <Text style={styles.slug}>/{business.slug}</Text>
-                    </View>
+                    <Text numberOfLines={1} style={styles.optionName}>
+                      {business.name}
+                    </Text>
                     {selected ? <Text style={styles.check}>✓</Text> : null}
                   </Pressable>
                 );
@@ -146,17 +143,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 38,
   },
-  optionCopy: { flex: 1 },
   optionName: {
     color: colors.ink,
+    flex: 1,
     fontFamily: typography.fontFamilyBold,
     fontSize: 13,
-  },
-  slug: {
-    color: colors.brand600,
-    fontFamily: typography.fontFamilyMedium,
-    fontSize: 10,
-    marginTop: 2,
   },
   check: {
     color: colors.brand600,

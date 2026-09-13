@@ -22,6 +22,24 @@ export interface BusinessPayload {
   address_2: string | null;
 }
 
+export interface AddressSuggestion {
+  place_id: string;
+  description: string;
+}
+
+export interface SuggestedAddress {
+  address: string;
+  address_2?: string;
+  city?: string;
+  pincode?: string;
+  state?: string;
+  country?: string;
+}
+
+export interface CustomerSearchResult extends ConnectionUser {
+  user_id: number;
+}
+
 export interface BusinessSearchResult {
   uuid: string;
   name: string;
@@ -79,11 +97,17 @@ export interface BusinessConnection {
   business_id: number;
   created_by: number;
   role: string;
+  request_status: "pending" | "approved" | "rejected";
   created_at: string;
   updated_at: string;
   connected_user: ConnectionUser | null;
   creator: ConnectionUser | null;
   business: Pick<Business, "uuid" | "name" | "slug"> | null;
+}
+
+export interface ConnectionRequests {
+  incoming: BusinessConnection[];
+  outgoing: BusinessConnection[];
 }
 
 export interface Transition {
@@ -99,6 +123,7 @@ export interface Transition {
   approved_by_user: boolean;
   approved_by_business: boolean;
   comment: string | null;
+  created_by: number | null;
   created_at: string;
   updated_at: string;
 }

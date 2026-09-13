@@ -1,0 +1,169 @@
+import Page from "@/components/app/Page";
+import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { colors, radii, spacing, typography } from "@/constants/theme";
+import { createUnit, deleteUnit, getUnits, updateUnit } from "@/lib/api/units";
+import { getApiError } from "@/lib/api/errors";
+import type { Unit } from "@/types/models";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SymbolView } from "expo-symbols";
+import { useState } from "react";
+import { Alert, Modal, StyleSheet, Text, View } from "react-native";
+
+export default function UnitsScreen() {
+  const queryClient = useQueryClient();
+  const unitsQuery = useQuery({ queryKey: ["units"], queryFn: getUnits });
+  const [editing, setEditing] = useState<Unit | null | undefined>(undefined);
+  const [name, setName] = useState("");
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      editing ? updateUnit(editing.uuid, name.trim()) : createUnit(name.trim()),
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: ["units"] });
+      setEditing(undefined);
+      setName("");
+      Alert.alert("Saved", response.message ?? "Unit saved successfully.");
+    },
+    onError: (error) => Alert.alert("Could not save unit", getApiError(error).message),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: deleteUnit,
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: ["units"] });
+      Alert.alert("Deleted", response.message ?? "Unit deleted successfully.");
+    },
+    onError: (error) => Alert.alert("Could not delete unit", getApiError(error).message),
+  });
+  const units = unitsQuery.data?.data ?? [];
+
+  const openForm = (unit: Unit | null) => {
+    setEditing(unit);
+    setName(unit?.name ?? "");
+  };
+  const submit = () => {
+    if (name.trim().length < 1 || name.trim().length > 30) {
+      Alert.alert("Invalid unit", "Enter a unit name of up to 30 characters.");
+      return;
+    }
+    saveMutation.mutate();
+  };
+  const confirmDelete = (unit: Unit) => {
+    Alert.alert("Delete unit?", `Delete ${unit.name}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => deleteMutation.mutate(unit.uuid),
+      },
+    ]);
+  };
+
+  return (
+    <Page
+      eyebrow="CONFIGURATION"
+      title="Units"
+      subtitle="Manage units used in transaction quantities."
+      headerAction={<Button label="Add" size="sm" onPress={() => openForm(null)} />}
+      refreshing={unitsQuery.isFetching}
+      onRefresh={() => void unitsQuery.refetch()}
+    >
+      {unitsQuery.isPending ? (
+        <LoadingState label="Loading units…" />
+      ) : unitsQuery.isError ? (
+        <ErrorState
+          message={getApiError(unitsQuery.error).message}
+          retry={() => void unitsQuery.refetch()}
+        />
+      ) : units.length === 0 ? (
+        <EmptyState title="No units" message="Add a unit to get started." />
+      ) : (
+        <View style={styles.list}>
+          {units.map((unit) => (
+            <View style={styles.card} key={unit.uuid}>
+              <View style={styles.icon}>
+                <SymbolView
+                  name={{ ios: "ruler", android: "straighten", web: "straighten" }}
+                  size={19}
+                  tintColor={colors.brand600}
+                />
+              </View>
+              <View style={styles.grow}>
+                <Text style={styles.name}>{unit.name}</Text>
+                <Text style={styles.scope}>{unit.can_manage ? "Business unit" : "System unit"}</Text>
+              </View>
+              {unit.can_manage ? (
+                <View style={styles.actions}>
+                  <Button label="Edit" variant="ghost" size="sm" onPress={() => openForm(unit)} />
+                  <Button label="Delete" variant="danger" size="sm" onPress={() => confirmDelete(unit)} />
+                </View>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Modal
+        visible={editing !== undefined}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditing(undefined)}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.dialog}>
+            <Text style={styles.dialogTitle}>{editing ? "Edit unit" : "Add unit"}</Text>
+            <Input label="Unit name" value={name} onChangeText={setName} placeholder="For example, kg" autoFocus maxLength={30} />
+            <View style={styles.dialogActions}>
+              <Button label="Cancel" variant="ghost" onPress={() => setEditing(undefined)} />
+              <Button label="Save" loading={saveMutation.isPending} onPress={submit} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </Page>
+  );
+}
+
+const styles = StyleSheet.create({
+  list: { gap: spacing.md },
+  card: {
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  icon: {
+    alignItems: "center",
+    backgroundColor: colors.brand50,
+    borderRadius: radii.md,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  grow: { flex: 1, minWidth: 100 },
+  name: { color: colors.ink, fontFamily: typography.fontFamilyExtraBold, fontSize: 15 },
+  scope: { color: colors.slate500, fontFamily: typography.fontFamilyRegular, fontSize: 10, marginTop: 2 },
+  actions: { flexDirection: "row", gap: spacing.xs },
+  overlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(15,23,42,.45)",
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  dialog: {
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    gap: spacing.lg,
+    maxWidth: 440,
+    padding: spacing.xl,
+    width: "100%",
+  },
+  dialogTitle: { color: colors.ink, fontFamily: typography.fontFamilyExtraBold, fontSize: 20 },
+  dialogActions: { flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end" },
+});

@@ -108,9 +108,9 @@ export default function TransitionsScreen() {
       Alert.alert("Could not save transition", getApiError(error).message),
   });
   const approvalMutation = useMutation({
-    mutationFn: ({ uuid, approved }: { uuid: string; approved: boolean }) =>
+    mutationFn: ({ uuid }: { uuid: string }) =>
       updateTransition(uuid, {
-        [businessMode ? "approved_by_business" : "approved_by_user"]: approved,
+        [businessMode ? "approved_by_business" : "approved_by_user"]: true,
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: transitionQueryKey });
@@ -347,6 +347,9 @@ export default function TransitionsScreen() {
                 const ownApproval = businessMode
                   ? transition.approved_by_business
                   : transition.approved_by_user;
+                const locked =
+                  transition.approved_by_user &&
+                  transition.approved_by_business;
 
                 return (
                   <View style={styles.card} key={transition.uuid}>
@@ -404,39 +407,42 @@ export default function TransitionsScreen() {
                       />
                     </View>
 
-                    <View style={styles.actions}>
-                      <Button
-                        label={ownApproval ? "Revoke approval" : "Approve"}
-                        size="sm"
-                        variant={ownApproval ? "secondary" : "primary"}
-                        loading={
-                          approvalMutation.isPending &&
-                          approvalMutation.variables.uuid === transition.uuid
-                        }
-                        onPress={() =>
-                          approvalMutation.mutate({
-                            uuid: transition.uuid,
-                            approved: !ownApproval,
-                          })
-                        }
-                      />
-                      <Button
-                        label="Edit"
-                        size="sm"
-                        variant="outline"
-                        onPress={() => openEdit(transition)}
-                      />
-                      <Button
-                        label="Delete"
-                        size="sm"
-                        variant="danger"
-                        loading={
-                          deleteMutation.isPending &&
-                          deleteMutation.variables === transition.uuid
-                        }
-                        onPress={() => confirmDelete(transition)}
-                      />
-                    </View>
+                    {!locked ? (
+                      <View style={styles.actions}>
+                        {!ownApproval ? (
+                          <Button
+                            label="Approve"
+                            size="sm"
+                            loading={
+                              approvalMutation.isPending &&
+                              approvalMutation.variables.uuid ===
+                                transition.uuid
+                            }
+                            onPress={() =>
+                              approvalMutation.mutate({
+                                uuid: transition.uuid,
+                              })
+                            }
+                          />
+                        ) : null}
+                        <Button
+                          label="Edit"
+                          size="sm"
+                          variant="outline"
+                          onPress={() => openEdit(transition)}
+                        />
+                        <Button
+                          label="Delete"
+                          size="sm"
+                          variant="danger"
+                          loading={
+                            deleteMutation.isPending &&
+                            deleteMutation.variables === transition.uuid
+                          }
+                          onPress={() => confirmDelete(transition)}
+                        />
+                      </View>
+                    ) : null}
                   </View>
                 );
               })}

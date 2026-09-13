@@ -1,9 +1,11 @@
 import { apiClient } from "@/lib/api/client";
 import type { ApiSuccess } from "@/types/api";
 import type {
+  AddressSuggestion,
   Business,
   BusinessPayload,
   BusinessSearchResult,
+  SuggestedAddress,
 } from "@/types/models";
 
 export async function getBusinesses() {
@@ -52,6 +54,26 @@ export async function searchBusinesses(key: string, signal?: AbortSignal) {
       params: { key },
       signal,
     },
+  );
+  return data;
+}
+
+export async function searchAddressSuggestions(
+  key: string,
+  sessionToken: string,
+  signal?: AbortSignal,
+) {
+  const { data } = await apiClient.get<ApiSuccess<AddressSuggestion[]>>(
+    "/business/address-suggestions",
+    { params: { key, session_token: sessionToken }, signal },
+  );
+  return data;
+}
+
+export async function getAddressSuggestionDetails(placeId: string, sessionToken: string) {
+  const { data } = await apiClient.get<ApiSuccess<SuggestedAddress>>(
+    `/business/address-suggestions/${encodeURIComponent(placeId)}`,
+    { params: { session_token: sessionToken } },
   );
   return data;
 }

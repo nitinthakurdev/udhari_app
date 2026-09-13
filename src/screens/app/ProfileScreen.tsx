@@ -1,36 +1,57 @@
 import Page from "@/components/app/Page";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { colors, radii, spacing, typography } from "@/constants/theme";
-import { changePassword, logout } from "@/lib/api/auth";
-import { getApiError } from "@/lib/api/errors";
+import { logout } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
-import { Controller, useForm } from "react-hook-form";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { useRouter, type Href } from "expo-router";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-interface PasswordValues {
-  currentPassword: string;
-  newPassword: string;
-  confirmPassword: string;
-}
-
-const strongPassword = (value: string) =>
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9]).{8,72}$/.test(value) ||
-  "Use 8–72 characters with upper, lower, number, and symbol.";
+const accountItems: {
+  path: string;
+  label: string;
+  description: string;
+  icon: SymbolViewProps["name"];
+}[] = [
+  {
+    path: "personal-info",
+    label: "Personal info",
+    description: "View your account and contact details.",
+    icon: { ios: "person", android: "person", web: "person" },
+  },
+  {
+    path: "change-password",
+    label: "Change password",
+    description: "Update your password and protect your account.",
+    icon: { ios: "key", android: "key", web: "key" },
+  },
+  {
+    path: "privacy-policy",
+    label: "Privacy policy",
+    description: "Learn how your information is handled.",
+    icon: { ios: "lock.shield", android: "shield", web: "shield" },
+  },
+  {
+    path: "help",
+    label: "Help & support",
+    description: "Get guidance for your account and connections.",
+    icon: { ios: "questionmark.circle", android: "help", web: "help" },
+  },
+  {
+    path: "faq",
+    label: "FAQ",
+    description: "Find answers to common questions.",
+    icon: { ios: "text.bubble", android: "chat", web: "chat" },
+  },
+];
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const clearSession = useAuthStore((state) => state.clearSession);
-  const form = useForm<PasswordValues>({
-    defaultValues: {
-      currentPassword: "",
-      newPassword: "",
-      confirmPassword: "",
-    },
-  });
+  const isBusiness = user?.user_role?.slug === "business";
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSettled: () => {
@@ -38,22 +59,6 @@ export default function ProfileScreen() {
       clearSession();
     },
   });
-  const passwordMutation = useMutation({
-    mutationFn: ({ currentPassword, newPassword }: PasswordValues) =>
-      changePassword(currentPassword, newPassword),
-    onSuccess: (response) => {
-      form.reset();
-      Alert.alert(
-        "Password changed",
-        response.message ?? "Your password was updated.",
-      );
-    },
-    onError: (error) =>
-      Alert.alert("Could not change password", getApiError(error).message),
-  });
-  const submitPassword = form.handleSubmit((values) =>
-    passwordMutation.mutate(values),
-  );
   const fullName = user
     ? [user.first_name, user.last_name].filter(Boolean).join(" ")
     : "Udhari user";
@@ -61,224 +66,278 @@ export default function ProfileScreen() {
     ? `${user.first_name[0] ?? ""}${user.last_name?.[0] ?? ""}`.toUpperCase()
     : "U";
 
+  const openAccountPage = (path: string) => {
+    const rolePath = isBusiness ? "(business)" : "(user)";
+    router.push(`/(app)/${rolePath}/account/${path}` as Href);
+  };
+
   return (
     <Page
       eyebrow="ACCOUNT"
-      title="Profile & security"
-      subtitle="Review your details and protect your account."
+      title="Your account"
+      subtitle="Manage your profile, privacy, and support settings."
     >
       <View style={styles.hero}>
+        <View style={styles.heroOrbLarge} />
+        <View style={styles.heroOrbSmall} />
         <View style={styles.avatar}>
           <Text style={styles.initials}>{initials}</Text>
         </View>
         <View style={styles.grow}>
           <Text style={styles.name}>{fullName}</Text>
           <Text style={styles.username}>@{user?.username}</Text>
-          <Text style={styles.role}>{user?.user_role?.name ?? "User"}</Text>
+          <View style={styles.roleBadge}>
+            <View style={styles.onlineDot} />
+            <Text style={styles.role}>{user?.user_role?.name ?? "User"}</Text>
+          </View>
         </View>
-      </View>
-
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Personal information</Text>
-        <Detail
-          icon={{ ios: "envelope", android: "mail", web: "mail" }}
-          label="Email"
-          value={user?.email ?? "—"}
-        />
-        <Detail
-          icon={{ ios: "phone", android: "phone", web: "phone" }}
-          label="Phone"
-          value={`${user?.dial_code ?? ""} ${user?.phone ?? ""}`.trim()}
-        />
-        <Detail
-          icon={{
-            ios: "checkmark.shield",
-            android: "verified_user",
-            web: "verified_user",
-          }}
-          label="Email status"
-          value={user?.is_email_verified ? "Verified" : "Not verified"}
-        />
-      </View>
-
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Change password</Text>
-        <View style={styles.form}>
-          <Controller
-            control={form.control}
-            name="currentPassword"
-            rules={{ required: "Current password is required." }}
-            render={({
-              field: { onBlur, onChange, value },
-              fieldState: { error },
-            }) => (
-              <Input
-                label="Current password"
-                value={value}
-                onBlur={onBlur}
-                onChangeText={onChange}
-                isPassword
-                errorText={error?.message}
-              />
-            )}
-          />
-          <Controller
-            control={form.control}
-            name="newPassword"
-            rules={{
-              required: "New password is required.",
-              validate: strongPassword,
+        <View style={styles.secureBadge}>
+          <SymbolView
+            name={{
+              ios: "checkmark.shield.fill",
+              android: "verified_user",
+              web: "verified_user",
             }}
-            render={({
-              field: { onBlur, onChange, value },
-              fieldState: { error },
-            }) => (
-              <Input
-                label="New password"
-                value={value}
-                onBlur={onBlur}
-                onChangeText={onChange}
-                isPassword
-                errorText={error?.message}
-              />
-            )}
-          />
-          <Controller
-            control={form.control}
-            name="confirmPassword"
-            rules={{
-              required: "Confirm your password.",
-              validate: (value) =>
-                value === form.getValues("newPassword") ||
-                "Passwords do not match.",
-            }}
-            render={({
-              field: { onBlur, onChange, value },
-              fieldState: { error },
-            }) => (
-              <Input
-                label="Confirm password"
-                value={value}
-                onBlur={onBlur}
-                onChangeText={onChange}
-                isPassword
-                errorText={error?.message}
-              />
-            )}
-          />
-          <Button
-            label="Update password"
-            fullWidth
-            loading={passwordMutation.isPending}
-            onPress={() => void submitPassword()}
+            size={20}
+            tintColor={colors.white}
           />
         </View>
       </View>
 
-      <Button
-        label="Log out"
-        fullWidth
-        variant="danger"
-        loading={logoutMutation.isPending}
-        onPress={() => logoutMutation.mutate()}
-      />
+      <View style={styles.accountMenu}>
+        <View style={styles.menuHeading}>
+          <Text style={styles.menuTitle}>Account settings</Text>
+          <Text style={styles.menuSubtitle}>Choose what you want to manage</Text>
+        </View>
+        {accountItems.map((item) => (
+          <Pressable
+            accessibilityRole="button"
+            key={item.path}
+            onPress={() => openAccountPage(item.path)}
+            style={({ pressed }) => [
+              styles.menuCard,
+              pressed && styles.menuCardPressed,
+            ]}
+          >
+            <View style={styles.menuIcon}>
+              <SymbolView
+                name={item.icon}
+                size={20}
+                tintColor={colors.brand600}
+              />
+            </View>
+            <View style={styles.grow}>
+              <Text style={styles.menuItemTitle}>{item.label}</Text>
+              <Text style={styles.menuItemDescription}>{item.description}</Text>
+            </View>
+            <SymbolView
+              name={{
+                ios: "chevron.right",
+                android: "chevron_right",
+                web: "chevron_right",
+              }}
+              size={18}
+              tintColor={colors.slate400}
+            />
+          </Pressable>
+        ))}
+      </View>
+
+      <View style={styles.logoutPanel}>
+        <View style={styles.logoutCopy}>
+          <Text style={styles.logoutTitle}>Sign out of Udhari</Text>
+          <Text style={styles.logoutText}>
+            You can securely sign in again anytime.
+          </Text>
+        </View>
+        <Button
+          label="Log out"
+          variant="danger"
+          size="sm"
+          loading={logoutMutation.isPending}
+          onPress={() => logoutMutation.mutate()}
+        />
+      </View>
     </Page>
-  );
-}
-
-function Detail({
-  icon,
-  label,
-  value,
-}: {
-  icon: SymbolViewProps["name"];
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.detail}>
-      <SymbolView name={icon} size={17} tintColor={colors.brand600} />
-      <View style={styles.grow}>
-        <Text style={styles.detailLabel}>{label}</Text>
-        <Text style={styles.detailValue}>{value}</Text>
-      </View>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
   hero: {
     alignItems: "center",
-    backgroundColor: colors.ink,
-    borderRadius: radii.lg,
+    backgroundColor: colors.brand600,
+    borderRadius: 22,
+    elevation: 5,
     flexDirection: "row",
     gap: spacing.lg,
-    padding: spacing.xl,
+    minHeight: 126,
+    overflow: "hidden",
+    padding: spacing.xl + 2,
+    shadowColor: colors.brand700,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+  },
+  heroOrbLarge: {
+    backgroundColor: "rgba(255,255,255,.09)",
+    borderRadius: radii.full,
+    height: 150,
+    position: "absolute",
+    right: -55,
+    top: -70,
+    width: 150,
+  },
+  heroOrbSmall: {
+    backgroundColor: "rgba(255,255,255,.08)",
+    borderRadius: radii.full,
+    bottom: -45,
+    height: 90,
+    left: 76,
+    position: "absolute",
+    width: 90,
   },
   avatar: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,.1)",
-    borderColor: "rgba(255,255,255,.15)",
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    height: 64,
+    backgroundColor: colors.white,
+    borderColor: "rgba(255,255,255,.45)",
+    borderRadius: 21,
+    borderWidth: 3,
+    height: 68,
     justifyContent: "center",
-    width: 64,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    width: 68,
   },
   initials: {
-    color: colors.white,
+    color: colors.brand600,
     fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 20,
+    fontSize: 22,
   },
   grow: { flex: 1 },
   name: {
     color: colors.white,
     fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 20,
+    fontSize: 21,
+    letterSpacing: -0.4,
   },
   username: {
-    color: colors.brand200,
+    color: "rgba(255,255,255,.75)",
     fontFamily: typography.fontFamilyMedium,
-    fontSize: 11,
-    marginTop: 3,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  roleBadge: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,.14)",
+    borderRadius: radii.full,
+    flexDirection: "row",
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  onlineDot: {
+    backgroundColor: "#86efac",
+    borderRadius: radii.full,
+    height: 6,
+    width: 6,
   },
   role: {
-    color: colors.slate400,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 10,
-    marginTop: spacing.sm,
+    color: colors.white,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 9,
+    textTransform: "uppercase",
   },
-  panel: {
+  secureBadge: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,.14)",
+    borderRadius: radii.full,
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  accountMenu: {
     backgroundColor: colors.white,
     borderColor: colors.line,
-    borderRadius: radii.lg,
+    borderRadius: 20,
     borderWidth: 1,
-    gap: spacing.lg,
-    padding: spacing.lg,
+    elevation: 1,
+    overflow: "hidden",
+    padding: spacing.sm,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
   },
-  panelTitle: {
+  menuHeading: {
+    paddingBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  menuTitle: {
     color: colors.ink,
     fontFamily: typography.fontFamilyExtraBold,
     fontSize: 16,
   },
-  detail: {
+  menuSubtitle: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    marginTop: 3,
+  },
+  menuCard: {
     alignItems: "center",
-    borderTopColor: colors.line,
-    borderTopWidth: 1,
+    borderRadius: radii.md,
     flexDirection: "row",
     gap: spacing.md,
-    paddingTop: spacing.md,
+    minHeight: 70,
+    padding: spacing.md,
   },
-  detailLabel: {
+  menuCardPressed: { backgroundColor: colors.brand50 },
+  menuIcon: {
+    alignItems: "center",
+    backgroundColor: colors.brand50,
+    borderRadius: radii.md,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  menuItemTitle: {
+    color: colors.ink,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 14,
+  },
+  menuItemDescription: {
     color: colors.slate500,
-    fontFamily: typography.fontFamilyMedium,
+    fontFamily: typography.fontFamilyRegular,
     fontSize: 10,
+    lineHeight: 15,
+    marginTop: 3,
   },
-  detailValue: {
+  logoutPanel: {
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  logoutCopy: { flex: 1 },
+  logoutTitle: {
     color: colors.ink,
     fontFamily: typography.fontFamilyBold,
     fontSize: 13,
+  },
+  logoutText: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 10,
+    lineHeight: 15,
     marginTop: 2,
   },
-  form: { gap: spacing.lg },
 });
