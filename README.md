@@ -18,6 +18,16 @@ Expo 57 app for managing Udhari businesses and account connections. Application 
    npx expo start
    ```
 
+## Local EAS builds
+
+The `local` EAS profile builds the app against the staging API at
+`https://staging-api.udhari.in/api/v1`.
+
+```bash
+eas build --local --profile local --platform android
+eas build --local --profile local --platform ios
+```
+
 ## Available flows
 
 - Register, verify email, sign in, reset password, and change password

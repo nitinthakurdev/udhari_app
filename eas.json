@@ -1,0 +1,28 @@
+{
+  "cli": {
+    "version": ">= 22.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "local": {
+      "extends": "preview",
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://staging-api.udhari.in/api/v1"
+      }
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
