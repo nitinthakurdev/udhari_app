@@ -363,10 +363,21 @@ function BusinessDashboard({
           : transition.customer_business_id,
       ),
   ).size;
-  const receivableCustomerCount = new Set(
+  const unpaidCustomerCount = new Set(
     approvedTransitions
       .filter(
         (transition) =>
+          transition.customer_business_id === null &&
+          transition.account_type === "receivable",
+      )
+      .map((transition) => transition.customer_user_id),
+  ).size;
+  const paidCustomerCount = new Set(
+    transitions
+      .filter(
+        (transition) =>
+          transition.request_status === "approved" &&
+          transition.payment_status === "paid" &&
           transition.customer_business_id === null &&
           transition.account_type === "receivable",
       )
@@ -452,10 +463,16 @@ function BusinessDashboard({
                 tone="green"
               />
               <CountCard
-                icon={{ ios: "person.2", android: "group", web: "group" }}
-                label="Customers to receive from"
-                value={receivableCustomerCount}
-                tone="blue"
+                icon={{ ios: "clock", android: "schedule", web: "schedule" }}
+                label="Customers yet to pay"
+                value={unpaidCustomerCount}
+                tone="orange"
+              />
+              <CountCard
+                icon={{ ios: "checkmark.circle", android: "check_circle", web: "check_circle" }}
+                label="Customers paid"
+                value={paidCustomerCount}
+                tone="green"
               />
             </View>
           </View>

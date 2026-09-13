@@ -10,13 +10,15 @@ import { stackNavigation } from "@/constants/navigationAnimations";
 import { useAuthStore } from "@/stores/authStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { useEffect, useState } from "react";
+import { View } from "react-native";
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -35,8 +37,14 @@ export default function RootLayout() {
         },
       }),
   );
+  const hasHydrated = useAuthStore((state) => state.hasHydrated);
+  const isReady = (fontsLoaded || Boolean(fontError)) && hasHydrated;
 
-  if (!fontsLoaded && !fontError) return null;
+  useEffect(() => {
+    if (isReady) SplashScreen.hide();
+  }, [isReady]);
+
+  if (!isReady) return null;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -49,16 +57,7 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const insets = useSafeAreaInsets();
-  const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
-
-  if (!hasHydrated) {
-    return (
-      <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
-        <ActivityIndicator color="#155eef" size="large" />
-      </View>
-    );
-  }
 
   return (
     <View
