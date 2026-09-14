@@ -1,4 +1,5 @@
 import { colors, spacing, typography } from "@/constants/theme";
+import TopHeader from "@/components/app/TopHeader";
 import type { ReactNode } from "react";
 import {
   RefreshControl,
@@ -16,6 +17,7 @@ interface PageProps {
   refreshing?: boolean;
   onRefresh?: () => void;
   headerAction?: ReactNode;
+  backTitle?: string;
 }
 
 export default function Page({
@@ -26,6 +28,7 @@ export default function Page({
   refreshing = false,
   onRefresh,
   headerAction,
+  backTitle,
 }: PageProps) {
   return (
     <ScrollView
@@ -43,6 +46,7 @@ export default function Page({
         ) : undefined
       }
     >
+      {backTitle ? <TopHeader title={backTitle} /> : null}
       <View style={styles.headerRow}>
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>{eyebrow}</Text>

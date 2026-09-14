@@ -100,6 +100,7 @@ export default function UnitsScreen() {
 
   return (
     <Page
+      backTitle="Configuration"
       eyebrow="CONFIGURATION"
       title="Units"
       subtitle="Manage units used in transaction quantities."

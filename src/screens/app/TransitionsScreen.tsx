@@ -11,7 +11,7 @@ import {
 import { getApiError } from "@/lib/api/errors";
 import {
   cancelTransition,
-  createTransition,
+  createTransitions,
   getBusinessTransitions,
   getTransitions,
   markTransitionPaymentReceived,
@@ -19,15 +19,22 @@ import {
 } from "@/lib/api/transitions";
 import { getBusinessUnits } from "@/lib/api/units";
 import { useAuthStore } from "@/stores/authStore";
+import type { ApiSuccess } from "@/types/api";
 import type {
   BusinessConnection,
   Transition,
-  TransitionCreatePayload,
+  TransitionBatchCreatePayload,
   TransitionUpdatePayload,
   Unit,
 } from "@/types/models";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
@@ -41,16 +48,28 @@ import {
   View,
 } from "react-native";
 
-interface TransitionForm {
+interface TransitionLineForm {
   productName: string;
   quantity: string;
   productPrice: string;
+  comment: string;
+}
+
+interface TransitionForm extends TransitionLineForm {
   balanceType: "payable" | "receivable";
+}
+
+interface AdditionalTransitionForm extends TransitionLineForm {
+  id: number;
+  unitId: string;
+  productName: string;
+  quantity: string;
+  productPrice: string;
   comment: string;
 }
 
 type SaveRequest =
-  | { mode: "create"; payload: TransitionCreatePayload }
+  | { mode: "create-batch"; payload: TransitionBatchCreatePayload }
   | { mode: "update"; uuid: string; payload: TransitionUpdatePayload };
 
 const emptyForm: TransitionForm = {
@@ -63,29 +82,75 @@ const emptyForm: TransitionForm = {
 
 export default function TransitionsScreen() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const searchParams = useLocalSearchParams<{
+    partyId?: string;
+    partyName?: string;
+    partyType?: string;
+  }>();
   const role = useAuthStore((state) => state.user?.user_role?.slug);
   const activeBusiness = useAuthStore((state) => state.activeBusiness);
   const businessMode = role === "business";
-  const transitionQueryKey = [
-    "transitions",
-    businessMode ? activeBusiness?.uuid : "user",
-  ] as const;
   const [editing, setEditing] = useState<Transition | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [targetUuid, setTargetUuid] = useState("");
   const [unitId, setUnitId] = useState("");
   const [form, setForm] = useState<TransitionForm>(emptyForm);
+  const [additionalItems, setAdditionalItems] = useState<
+    AdditionalTransitionForm[]
+  >([]);
+  const [nextItemId, setNextItemId] = useState(1);
   const [counterpartyType, setCounterpartyType] = useState<"user" | "business">("user");
-  const [view, setView] = useState<"active" | "unpaid" | "cancelled">("active");
+  const [view, setView] = useState<"all" | "unpaid" | "cancelled">("all");
+  const parsedPartyId = Number(searchParams.partyId);
+  const partyType =
+    searchParams.partyType === "user" || searchParams.partyType === "business"
+      ? searchParams.partyType
+      : undefined;
+  const hasPartyFilter = Boolean(
+    partyType && Number.isInteger(parsedPartyId) && parsedPartyId > 0,
+  );
+  const listView = hasPartyFilter ? "all" : view;
+  const partyName = searchParams.partyName?.trim() || "Selected account";
+  const transitionQueryRoot = [
+    "transitions",
+    businessMode ? activeBusiness?.uuid : "user",
+  ] as const;
+  const transitionQueryKey = [
+    ...transitionQueryRoot,
+    listView,
+    hasPartyFilter ? partyType : "all-parties",
+    hasPartyFilter ? parsedPartyId : 0,
+  ] as const;
 
-  const transitionsQuery = useQuery({
+  const transitionsQuery = useInfiniteQuery({
     queryKey: transitionQueryKey,
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       businessMode
-        ? getBusinessTransitions(activeBusiness?.uuid ?? "")
-        : getTransitions(),
+        ? getBusinessTransitions(activeBusiness?.uuid ?? "", {
+            page: pageParam,
+            limit: 20,
+            view: listView,
+            ...(hasPartyFilter
+              ? { party_type: partyType, party_id: parsedPartyId }
+              : {}),
+          })
+        : getTransitions({
+            page: pageParam,
+            limit: 20,
+            view: listView,
+            ...(hasPartyFilter
+              ? { party_type: partyType, party_id: parsedPartyId }
+              : {}),
+          }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.pagination.has_next_page
+        ? lastPage.meta.pagination.page + 1
+        : undefined,
     enabled: !businessMode || Boolean(activeBusiness?.uuid),
   });
+
   const customerConnectionsQuery = useQuery({
     queryKey: ["connected-users", activeBusiness?.uuid],
     queryFn: () => getConnectedUsers(activeBusiness?.uuid ?? ""),
@@ -96,13 +161,20 @@ export default function TransitionsScreen() {
     queryFn: () =>
       getBusinessConnections(businessMode ? activeBusiness?.uuid : undefined),
   });
-  const saveMutation = useMutation({
+  const saveMutation = useMutation<
+    ApiSuccess<Transition> | ApiSuccess<Transition[]>,
+    Error,
+    SaveRequest
+  >({
     mutationFn: (request: SaveRequest) =>
-      request.mode === "create"
-        ? createTransition(request.payload)
+      request.mode === "create-batch"
+        ? createTransitions(request.payload)
         : updateTransition(request.uuid, request.payload),
     onSuccess: async (response) => {
-      await queryClient.invalidateQueries({ queryKey: transitionQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
+        queryClient.invalidateQueries({ queryKey: ["transition-summary"] }),
+      ]);
       closeForm();
       Alert.alert(
         "Saved",
@@ -121,7 +193,10 @@ export default function TransitionsScreen() {
     mutationFn: ({ uuid }: { uuid: string }) =>
       updateTransition(uuid, { request_status: "approved" }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: transitionQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
+        queryClient.invalidateQueries({ queryKey: ["transition-summary"] }),
+      ]);
     },
     onError: (error) =>
       Alert.alert("Could not update approval", getApiError(error).message),
@@ -129,7 +204,10 @@ export default function TransitionsScreen() {
   const cancelMutation = useMutation({
     mutationFn: cancelTransition,
     onSuccess: async (response) => {
-      await queryClient.invalidateQueries({ queryKey: transitionQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
+        queryClient.invalidateQueries({ queryKey: ["transition-summary"] }),
+      ]);
       Alert.alert(
         "Cancelled",
         response.message ?? "Transition cancelled successfully.",
@@ -141,7 +219,10 @@ export default function TransitionsScreen() {
   const paymentMutation = useMutation({
     mutationFn: markTransitionPaymentReceived,
     onSuccess: async (response) => {
-      await queryClient.invalidateQueries({ queryKey: transitionQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
+        queryClient.invalidateQueries({ queryKey: ["transition-summary"] }),
+      ]);
       Alert.alert(
         "Payment received",
         response.message ?? "Payment marked as received.",
@@ -160,17 +241,11 @@ export default function TransitionsScreen() {
   const allConnections = businessMode
     ? [...customerConnections, ...businessConnections]
     : businessConnections;
-  const transitions = transitionsQuery.data?.data ?? [];
-  const visibleTransitions = transitions.filter((transition) => {
-    if (view === "cancelled") return transition.request_status === "cancelled";
-    if (view === "unpaid") {
-      return (
-        transition.request_status === "approved" &&
-        transition.payment_status === "unpaid"
-      );
-    }
-    return transition.request_status !== "cancelled";
-  });
+  const transitions =
+    transitionsQuery.data?.pages.flatMap((page) => page.data) ?? [];
+  const transitionTotal =
+    transitionsQuery.data?.pages[0]?.meta.pagination.total ?? 0;
+  const visibleTransitions = transitions;
   const selectedConnection = connections.find(
     (connection) => connection.uuid === targetUuid,
   );
@@ -193,6 +268,7 @@ export default function TransitionsScreen() {
     setTargetUuid("");
     setUnitId("");
     setForm(emptyForm);
+    setAdditionalItems([]);
   };
 
   const openCreate = (type: "user" | "business" = "business") => {
@@ -203,6 +279,7 @@ export default function TransitionsScreen() {
     setTargetUuid(availableConnections[0]?.uuid ?? "");
     setUnitId("");
     setForm(emptyForm);
+    setAdditionalItems([]);
     setFormOpen(true);
   };
 
@@ -222,6 +299,7 @@ export default function TransitionsScreen() {
     setEditing(transition);
     setTargetUuid(target?.uuid ?? "");
     setUnitId(String(transition.unit_id));
+    setAdditionalItems([]);
     setForm({
       productName: transition.product_name,
       quantity: String(transition.product_qty),
@@ -233,44 +311,71 @@ export default function TransitionsScreen() {
   };
 
   const submit = () => {
-    const quantity = Number(form.quantity);
-    const productPrice = Number(form.productPrice);
-    const selectedUnitId = Number(effectiveUnitId);
-    const productName = form.productName.trim();
+    const itemForms = [
+      { ...form, unitId: effectiveUnitId },
+      ...additionalItems.map((item) => ({
+        ...item,
+        unitId: units.some((unit) => String(unit.id) === item.unitId)
+          ? item.unitId
+          : String(units[0]?.id ?? ""),
+      })),
+    ];
+    const items: TransitionBatchCreatePayload["items"] = [];
 
-    if (productName.length < 2) {
-      Alert.alert("Product required", "Enter at least two characters.");
-      return;
+    for (const [index, item] of itemForms.entries()) {
+      const quantity = Number(item.quantity);
+      const productPrice = Number(item.productPrice);
+      const selectedUnitId = Number(item.unitId);
+      const productName = item.productName.trim();
+      const itemLabel = itemForms.length > 1 ? `Item ${index + 1}: ` : "";
+
+      if (productName.length < 2) {
+        Alert.alert("Product required", `${itemLabel}enter at least two characters.`);
+        return;
+      }
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        Alert.alert(
+          "Invalid quantity",
+          `${itemLabel}quantity must be greater than zero.`,
+        );
+        return;
+      }
+      if (
+        item.productPrice.trim() === "" ||
+        !Number.isFinite(productPrice) ||
+        productPrice < 0
+      ) {
+        Alert.alert(
+          "Invalid unit price",
+          `${itemLabel}unit price must be zero or greater.`,
+        );
+        return;
+      }
+      const totalPrice = calculateFormTotal(item);
+      if (totalPrice > 9_999_999_999.99) {
+        Alert.alert(
+          "Invalid total",
+          `${itemLabel}calculated total price is too large.`,
+        );
+        return;
+      }
+      if (!Number.isInteger(selectedUnitId) || selectedUnitId < 1) {
+        Alert.alert("Unit required", `${itemLabel}select a unit before saving.`);
+        return;
+      }
+
+      items.push({
+        product_name: productName,
+        product_qty: quantity,
+        product_unit_price: productPrice,
+        total_price: totalPrice,
+        unit_id: selectedUnitId,
+        comment: item.comment.trim() || null,
+      });
     }
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      Alert.alert("Invalid quantity", "Quantity must be greater than zero.");
-      return;
-    }
-    if (
-      form.productPrice.trim() === "" ||
-      !Number.isFinite(productPrice) ||
-      productPrice < 0
-    ) {
-      Alert.alert("Invalid unit price", "Unit price must be zero or greater.");
-      return;
-    }
-    const totalPrice = calculateFormTotal(form);
-    if (totalPrice > 9_999_999_999.99) {
-      Alert.alert("Invalid total", "Calculated total price is too large.");
-      return;
-    }
-    if (!Number.isInteger(selectedUnitId) || selectedUnitId < 1) {
-      Alert.alert("Unit required", "Select a unit before saving.");
-      return;
-    }
-    const commonPayload = {
-      product_name: productName,
-      product_qty: quantity,
-      product_unit_price: productPrice,
-      total_price: totalPrice,
-      unit_id: selectedUnitId,
-      comment: form.comment.trim() || null,
-    };
+
+    const commonPayload = items[0];
+    if (!commonPayload) return;
 
     if (editing) {
       saveMutation.mutate({
@@ -299,10 +404,10 @@ export default function TransitionsScreen() {
       return;
     }
 
-    const targetBusinessId = getCounterpartyBusinessId(
-      target,
-      businessMode ? activeBusiness?.uuid : undefined,
-    );
+    const targetBusinessId =
+      businessMode && counterpartyType === "business"
+        ? getCounterpartyBusinessId(target, activeBusiness?.uuid)
+        : target.business_id;
     if (!targetBusinessId) {
       Alert.alert(
         "Business unavailable",
@@ -312,10 +417,10 @@ export default function TransitionsScreen() {
     }
 
     saveMutation.mutate({
-      mode: "create",
+      mode: "create-batch",
       payload: {
-        ...commonPayload,
         business_id: targetBusinessId,
+        items,
         ...(businessMode && counterpartyType === "business"
           ? {
               customer_business_uuid: activeBusiness?.uuid,
@@ -353,8 +458,24 @@ export default function TransitionsScreen() {
     );
   };
 
+  const addTransitionItem = () => {
+    if (additionalItems.length >= 49) return;
+    setAdditionalItems((current) => [
+      ...current,
+      {
+        id: nextItemId,
+        unitId: String(units[0]?.id ?? ""),
+        productName: "",
+        quantity: "1",
+        productPrice: "",
+        comment: "",
+      },
+    ]);
+    setNextItemId((current) => current + 1);
+  };
+
   const refreshing =
-    transitionsQuery.isFetching ||
+    (transitionsQuery.isRefetching && !transitionsQuery.isFetchingNextPage) ||
     customerConnectionsQuery.isFetching ||
     businessConnectionsQuery.isFetching;
   const refresh = () => {
@@ -365,10 +486,12 @@ export default function TransitionsScreen() {
 
   return (
     <Page
-      eyebrow="LEDGER"
-      title="Transitions"
+      eyebrow={hasPartyFilter ? "ACCOUNT LEDGER" : "LEDGER"}
+      title={hasPartyFilter ? partyName : "Transitions"}
       subtitle={
-        businessMode
+        hasPartyFilter
+          ? `All transitions with this ${partyType === "user" ? "customer" : "business"}.`
+          : businessMode
           ? "Manage entries for customers connected to the selected business."
           : "Manage entries shared with your connected businesses."
       }
@@ -404,7 +527,7 @@ export default function TransitionsScreen() {
             <View style={styles.grow}>
               <Text style={styles.sectionTitle}>Shared ledger</Text>
               <Text style={styles.sectionCopy}>
-                {transitions.length} entries
+                {transitionTotal} {transitionTotal === 1 ? "entry" : "entries"}
               </Text>
             </View>
             <View style={styles.headerActions}>
@@ -435,40 +558,75 @@ export default function TransitionsScreen() {
             </View>
           </View>
 
-          <View style={styles.tabs}>
-            {(["active", "unpaid", "cancelled"] as const).map((tab) => {
-              const count = transitions.filter((transition) =>
-                tab === "cancelled"
-                  ? transition.request_status === "cancelled"
-                  : tab === "unpaid"
-                    ? transition.request_status === "approved" &&
-                      transition.payment_status === "unpaid"
-                    : transition.request_status !== "cancelled",
-              ).length;
-              const selected = view === tab;
-              return (
-                <Pressable
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected }}
-                  key={tab}
-                  onPress={() => setView(tab)}
-                  style={[styles.tab, selected && styles.tabSelected]}
-                >
-                  <Text
-                    style={[styles.tabText, selected && styles.tabTextSelected]}
-                  >
-                    {tab === "active"
-                      ? "Active"
-                      : tab === "unpaid"
-                        ? "Unpaid transitions"
-                        : "Cancelled"} ({count})
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {hasPartyFilter ? (
+            <View style={styles.partyFilter}>
+              <View style={styles.partyFilterIcon}>
+                <SymbolView
+                  name={
+                    partyType === "user"
+                      ? { ios: "person", android: "person", web: "person" }
+                      : {
+                          ios: "building.2",
+                          android: "business",
+                          web: "business",
+                        }
+                  }
+                  size={18}
+                  tintColor={colors.brand600}
+                />
+              </View>
+              <View style={styles.grow}>
+                <Text style={styles.partyFilterLabel}>Showing entries with</Text>
+                <Text numberOfLines={1} style={styles.partyFilterName}>
+                  {partyName}
+                </Text>
+              </View>
+              <Button
+                label="Show all"
+                size="sm"
+                variant="ghost"
+                onPress={() =>
+                  router.setParams({
+                    partyId: "",
+                    partyName: "",
+                    partyType: "",
+                  })
+                }
+              />
+            </View>
+          ) : null}
 
-          {view === "active" &&
+          {!hasPartyFilter ? (
+            <View style={styles.tabs}>
+              {(["all", "unpaid", "cancelled"] as const).map((tab) => {
+                const selected = view === tab;
+                return (
+                  <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    key={tab}
+                    onPress={() => setView(tab)}
+                    style={[styles.tab, selected && styles.tabSelected]}
+                  >
+                    <Text
+                      style={[
+                        styles.tabText,
+                        selected && styles.tabTextSelected,
+                      ]}
+                    >
+                      {tab === "all"
+                        ? "All"
+                        : tab === "unpaid"
+                          ? "Unpaid transitions"
+                          : "Cancelled"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {listView === "all" &&
           connections.length === 0 &&
           visibleTransitions.length === 0 ? (
             <EmptyState
@@ -486,16 +644,16 @@ export default function TransitionsScreen() {
           ) : visibleTransitions.length === 0 ? (
             <EmptyState
               title={
-                view === "cancelled"
+                listView === "cancelled"
                   ? "No cancelled transitions"
-                  : view === "unpaid"
+                  : listView === "unpaid"
                     ? "No unpaid transitions"
                     : "No transitions yet"
               }
               message={
-                view === "cancelled"
+                listView === "cancelled"
                   ? "Cancelled transitions will appear here."
-                  : view === "unpaid"
+                  : listView === "unpaid"
                     ? "Approved unpaid transitions will appear here."
                     : "Add the first shared ledger entry."
               }
@@ -607,11 +765,12 @@ export default function TransitionsScreen() {
                     </View>
 
                     {businessMode &&
-                    view === "unpaid" &&
-                    transition.account_type === "receivable" ? (
+                    transition.account_type === "receivable" &&
+                    transition.request_status === "approved" &&
+                    transition.payment_status === "unpaid" ? (
                       <View style={styles.actions}>
                         <Button
-                          label="Payment received"
+                          label="Confirm payment received"
                           size="sm"
                           loading={
                             paymentMutation.isPending &&
@@ -665,12 +824,22 @@ export default function TransitionsScreen() {
                   </View>
                 );
               })}
+              {transitionsQuery.hasNextPage ? (
+                <Button
+                  label="Load more"
+                  variant="outline"
+                  fullWidth
+                  loading={transitionsQuery.isFetchingNextPage}
+                  onPress={() => void transitionsQuery.fetchNextPage()}
+                />
+              ) : null}
             </View>
           )}
         </>
       )}
 
       <TransitionFormModal
+        additionalItems={additionalItems}
         activeBusinessUuid={activeBusiness?.uuid}
         businessMode={businessMode}
         counterpartyType={counterpartyType}
@@ -687,9 +856,22 @@ export default function TransitionsScreen() {
         saving={saveMutation.isPending}
         targetUuid={targetUuid}
         onChange={setForm}
+        onAddItem={addTransitionItem}
+        onChangeItem={(nextItem) =>
+          setAdditionalItems((current) =>
+            current.map((item) =>
+              item.id === nextItem.id ? nextItem : item,
+            ),
+          )
+        }
         onClose={closeForm}
         onSelectTarget={setTargetUuid}
         onSelectUnit={setUnitId}
+        onRemoveItem={(id) =>
+          setAdditionalItems((current) =>
+            current.filter((item) => item.id !== id),
+          )
+        }
         onSubmit={submit}
       />
     </Page>
@@ -697,6 +879,7 @@ export default function TransitionsScreen() {
 }
 
 function TransitionFormModal({
+  additionalItems,
   activeBusinessUuid,
   businessMode,
   counterpartyType,
@@ -711,11 +894,15 @@ function TransitionFormModal({
   saving,
   targetUuid,
   onChange,
+  onAddItem,
+  onChangeItem,
   onClose,
   onSelectTarget,
   onSelectUnit,
+  onRemoveItem,
   onSubmit,
 }: {
+  additionalItems: AdditionalTransitionForm[];
   activeBusinessUuid?: string;
   businessMode: boolean;
   counterpartyType: "user" | "business";
@@ -730,17 +917,18 @@ function TransitionFormModal({
   saving: boolean;
   targetUuid: string;
   onChange: (form: TransitionForm) => void;
+  onAddItem: () => void;
+  onChangeItem: (item: AdditionalTransitionForm) => void;
   onClose: () => void;
   onSelectTarget: (uuid: string) => void;
   onSelectUnit: (id: string) => void;
+  onRemoveItem: (id: number) => void;
   onSubmit: () => void;
 }) {
   const update = <Field extends keyof TransitionForm>(
     field: Field,
     value: TransitionForm[Field],
   ) => onChange({ ...form, [field]: value });
-  const selectedUnit = units.find((unit) => String(unit.id) === unitId);
-  const unitSuffix = selectedUnit?.code ? ` / ${selectedUnit.code}` : "";
 
   return (
     <Modal
@@ -764,7 +952,7 @@ function TransitionFormModal({
                   {editing ? "Edit transition" : "New transition"}
                 </Text>
                 <Text style={styles.modalCopy}>
-                  This entry is shared with both connected accounts.
+                  Add one or more items for the same connected account.
                 </Text>
               </View>
               <Button
@@ -782,39 +970,16 @@ function TransitionFormModal({
                     ? "Connected customer"
                     : "Connected business"}
                 </Text>
-                {!businessMode || counterpartyType === "business" ? (
-                  <ConnectionDropdown
-                    activeBusinessUuid={activeBusinessUuid}
-                    businessMode={businessMode}
-                    connections={connections}
-                    value={targetUuid}
-                    onChange={onSelectTarget}
-                  />
-                ) : (
-                  <View style={styles.targets}>
-                    {connections.map((connection) => (
-                      <Pressable
-                        key={connection.uuid}
-                        onPress={() => onSelectTarget(connection.uuid)}
-                        style={[
-                          styles.target,
-                          targetUuid === connection.uuid && styles.targetSelected,
-                        ]}
-                      >
-                        <Text
-                          numberOfLines={1}
-                          style={[
-                            styles.targetText,
-                            targetUuid === connection.uuid &&
-                              styles.targetTextSelected,
-                          ]}
-                        >
-                          {getConnectionLabel(connection, businessMode, false)}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
+                <ConnectionDropdown
+                  activeBusinessUuid={activeBusinessUuid}
+                  businessMode={businessMode}
+                  connections={connections}
+                  counterpartyType={
+                    businessMode ? counterpartyType : "business"
+                  }
+                  value={targetUuid}
+                  onChange={onSelectTarget}
+                />
               </View>
             ) : null}
 
@@ -845,54 +1010,57 @@ function TransitionFormModal({
               </View>
             ) : null}
 
-            <UnitDropdown
+            <TransitionItemFields
               error={unitsError}
+              item={form}
               loading={unitsLoading}
+              title={!editing && additionalItems.length > 0 ? "Item 1" : undefined}
+              unitId={unitId}
               units={units}
-              value={unitId}
-              onChange={onSelectUnit}
+              onChange={(item) => onChange({ ...form, ...item })}
+              onSelectUnit={onSelectUnit}
             />
 
-            <Input
-              label="Product or service"
-              value={form.productName}
-              maxLength={150}
-              onChangeText={(value) => update("productName", value)}
-            />
-            <View style={styles.formRow}>
-              <Input
-                label={`Qty${unitSuffix}`}
-                value={form.quantity}
-                keyboardType="decimal-pad"
-                onChangeText={(value) => update("quantity", value)}
-                containerStyle={styles.formField}
+            {!editing
+              ? additionalItems.map((item, index) => (
+                  <TransitionItemFields
+                    key={item.id}
+                    item={item}
+                    loading={unitsLoading}
+                    title={`Item ${index + 2}`}
+                    unitId={
+                      units.some((unit) => String(unit.id) === item.unitId)
+                        ? item.unitId
+                        : String(units[0]?.id ?? "")
+                    }
+                    units={units}
+                    onChange={(nextItem) =>
+                      onChangeItem({ ...item, ...nextItem })
+                    }
+                    onRemove={() => onRemoveItem(item.id)}
+                    onSelectUnit={(nextUnitId) =>
+                      onChangeItem({ ...item, unitId: nextUnitId })
+                    }
+                  />
+                ))
+              : null}
+
+            {!editing && additionalItems.length < 49 ? (
+              <Button
+                label="Add another item"
+                variant="outline"
+                fullWidth
+                onPress={onAddItem}
               />
-              <Input
-                label={`Unit price${unitSuffix}`}
-                value={form.productPrice}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                onChangeText={(value) => update("productPrice", value)}
-                containerStyle={styles.formField}
-              />
-            </View>
-            <View style={styles.totalPreview}>
-              <Text style={styles.totalPreviewLabel}>Calculated total</Text>
-              <Text style={styles.totalPreviewValue}>
-                {formatAmount(calculateFormTotal(form))}
-              </Text>
-            </View>
-            <Input
-              label="Comment"
-              value={form.comment}
-              maxLength={2000}
-              multiline
-              numberOfLines={3}
-              inputStyle={styles.commentInput}
-              onChangeText={(value) => update("comment", value)}
-            />
+            ) : null}
             <Button
-              label={editing ? "Save changes" : "Create transition"}
+              label={
+                editing
+                  ? "Save changes"
+                  : `Create ${additionalItems.length + 1} ${
+                      additionalItems.length === 0 ? "transition" : "transitions"
+                    }`
+              }
               fullWidth
               loading={saving}
               onPress={onSubmit}
@@ -904,16 +1072,110 @@ function TransitionFormModal({
   );
 }
 
+function TransitionItemFields({
+  error = "",
+  item,
+  loading,
+  title,
+  unitId,
+  units,
+  onChange,
+  onRemove,
+  onSelectUnit,
+}: {
+  error?: string;
+  item: TransitionLineForm;
+  loading: boolean;
+  title?: string;
+  unitId: string;
+  units: Unit[];
+  onChange: (item: TransitionLineForm) => void;
+  onRemove?: () => void;
+  onSelectUnit: (id: string) => void;
+}) {
+  const update = (field: keyof TransitionLineForm, value: string) =>
+    onChange({ ...item, [field]: value });
+
+  return (
+    <View style={title ? styles.itemCard : undefined}>
+      {title ? (
+        <View style={styles.itemHeader}>
+          <Text style={styles.itemTitle}>{title}</Text>
+          {onRemove ? (
+            <Button
+              label="Remove"
+              size="sm"
+              variant="ghost"
+              onPress={onRemove}
+            />
+          ) : null}
+        </View>
+      ) : null}
+      <View style={styles.itemFields}>
+        <Input
+          label="Product or service"
+          value={item.productName}
+          maxLength={150}
+          onChangeText={(value) => update("productName", value)}
+        />
+        <View style={styles.itemValueRow}>
+          <View style={styles.unitField}>
+            <UnitDropdown
+              error={error}
+              loading={loading}
+              units={units}
+              value={unitId}
+              onChange={onSelectUnit}
+            />
+          </View>
+          <Input
+            label="Qty"
+            value={item.quantity}
+            keyboardType="decimal-pad"
+            onChangeText={(value) => update("quantity", value)}
+            containerStyle={styles.quantityField}
+          />
+          <Input
+            label="Unit price"
+            value={item.productPrice}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            onChangeText={(value) => update("productPrice", value)}
+            containerStyle={styles.priceField}
+          />
+        </View>
+        <View style={styles.totalPreview}>
+          <Text style={styles.totalPreviewLabel}>Calculated total</Text>
+          <Text style={styles.totalPreviewValue}>
+            {formatAmount(calculateFormTotal(item))}
+          </Text>
+        </View>
+        <Input
+          label="Comment"
+          value={item.comment}
+          maxLength={2000}
+          multiline
+          numberOfLines={3}
+          inputStyle={styles.commentInput}
+          onChangeText={(value) => update("comment", value)}
+        />
+      </View>
+    </View>
+  );
+}
+
 function ConnectionDropdown({
   activeBusinessUuid,
   businessMode,
   connections,
+  counterpartyType,
   value,
   onChange,
 }: {
   activeBusinessUuid?: string;
   businessMode: boolean;
   connections: BusinessConnection[];
+  counterpartyType: "user" | "business";
   value: string;
   onChange: (uuid: string) => void;
 }) {
@@ -921,29 +1183,39 @@ function ConnectionDropdown({
   const selectedConnection = connections.find(
     (connection) => connection.uuid === value,
   );
+  const isCustomer = counterpartyType === "user";
+  const disabled = connections.length === 0;
   const selectedLabel = selectedConnection
     ? getConnectionLabel(
         selectedConnection,
         businessMode,
-        true,
+        !isCustomer,
         activeBusinessUuid,
       )
-    : "Select a connected business";
+    : disabled
+      ? `No connected ${isCustomer ? "customers" : "businesses"}`
+      : `Select a connected ${isCustomer ? "customer" : "business"}`;
 
   return (
     <View>
       <Pressable
         accessibilityRole="button"
-        accessibilityState={{ expanded }}
+        accessibilityState={{ disabled, expanded }}
+        disabled={disabled}
         onPress={() => setExpanded((current) => !current)}
         style={({ pressed }) => [
           styles.dropdownTrigger,
-          pressed && styles.dropdownPressed,
+          disabled && styles.dropdownDisabled,
+          pressed && !disabled && styles.dropdownPressed,
         ]}
       >
         <View style={styles.dropdownValue}>
           <SymbolView
-            name={{ ios: "building.2", android: "business", web: "business" }}
+            name={
+              isCustomer
+                ? { ios: "person", android: "person", web: "person" }
+                : { ios: "building.2", android: "business", web: "business" }
+            }
             size={18}
             tintColor={colors.brand600}
           />
@@ -996,7 +1268,7 @@ function ConnectionDropdown({
                   {getConnectionLabel(
                     connection,
                     businessMode,
-                    true,
+                    !isCustomer,
                     activeBusinessUuid,
                   )}
                 </Text>
@@ -1048,12 +1320,13 @@ function UnitDropdown({
         ]}
       >
         <Text
+          numberOfLines={1}
           style={
             selectedUnit ? styles.dropdownText : styles.dropdownPlaceholder
           }
         >
           {selectedUnit
-            ? `${selectedUnit.name} (${selectedUnit.code})`
+            ? selectedUnit.code
             : loading
               ? "Loading units…"
               : "No units available"}
@@ -1093,7 +1366,7 @@ function UnitDropdown({
                     selected && styles.dropdownOptionTextSelected,
                   ]}
                 >
-                  {unit.name} ({unit.code})
+                  {unit.code}
                 </Text>
                 {selected ? (
                   <SymbolView
@@ -1185,7 +1458,7 @@ function formatAmount(value: number) {
   }).format(value);
 }
 
-function calculateFormTotal(form: TransitionForm) {
+function calculateFormTotal(form: TransitionLineForm) {
   const quantity = Number(form.quantity);
   const productPrice = Number(form.productPrice);
 
@@ -1223,6 +1496,35 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilyRegular,
     fontSize: 11,
     marginTop: 3,
+  },
+  partyFilter: {
+    alignItems: "center",
+    backgroundColor: colors.brand50,
+    borderColor: colors.brand200,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  partyFilterIcon: {
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderRadius: radii.md,
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  partyFilterLabel: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilyMedium,
+    fontSize: 9,
+  },
+  partyFilterName: {
+    color: colors.ink,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 13,
+    marginTop: 2,
   },
   tabs: {
     alignSelf: "stretch",
@@ -1447,8 +1749,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   targetTextSelected: { color: colors.brand700 },
-  formRow: { flexDirection: "row", gap: spacing.md },
-  formField: { flex: 1 },
+  itemCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.line,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  itemHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: spacing.md,
+  },
+  itemTitle: {
+    color: colors.ink,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 14,
+  },
+  itemFields: { gap: spacing.lg },
+  itemValueRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  unitField: { flex: 1.05, minWidth: 0 },
+  quantityField: { flex: 0.7, minWidth: 0 },
+  priceField: { flex: 1.15, minWidth: 0 },
   totalPreview: {
     alignItems: "center",
     backgroundColor: colors.brand50,

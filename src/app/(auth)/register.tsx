@@ -79,6 +79,7 @@ export default function RegisterScreen() {
       username: values.username.trim().toLowerCase(),
       phone: values.phone.trim(),
       dial_code: null,
+      role_slug: isBusiness ? "business" : "user",
     });
 
     void accepted_terms;

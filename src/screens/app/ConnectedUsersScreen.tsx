@@ -170,6 +170,7 @@ export default function ConnectedUsersScreen() {
 
   return (
     <Page
+      backTitle="Configuration"
       eyebrow="MANAGEMENT"
       title="Connected customers"
       subtitle="Find customers and manage connections for the selected business."

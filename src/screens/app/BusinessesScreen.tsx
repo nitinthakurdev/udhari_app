@@ -172,6 +172,7 @@ export default function BusinessesScreen() {
 
   return (
     <Page
+      backTitle="Configuration"
       eyebrow="MANAGEMENT"
       title="Businesses"
       subtitle="Create and manage your business profiles and branches."

@@ -6,6 +6,19 @@ export interface ApiSuccess<T> {
   meta: Record<string, unknown>;
 }
 
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  total_pages: number;
+  has_next_page: boolean;
+  has_previous_page: boolean;
+}
+
+export interface PaginatedApiSuccess<T> extends ApiSuccess<T[]> {
+  meta: ApiSuccess<T[]>["meta"] & { pagination: PaginationMeta };
+}
+
 export interface ApiValidationDetail {
   location?: string;
   field?: string;

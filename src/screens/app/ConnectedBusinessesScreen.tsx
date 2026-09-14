@@ -139,6 +139,7 @@ export default function ConnectedBusinessesScreen() {
 
   return (
     <Page
+      backTitle="Configuration"
       eyebrow="MANAGEMENT"
       title="Connected businesses"
       subtitle="Find businesses owned by other accounts and manage your connections."

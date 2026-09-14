@@ -8,14 +8,7 @@ export default function UserLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen
         name="connect-business"
-        options={{
-          headerBackTitle: "Requests",
-          headerShown: true,
-          headerShadowVisible: false,
-          headerTintColor: colors.brand600,
-          headerTitleStyle: { fontFamily: typography.fontFamilyBold },
-          title: "Connect business",
-        }}
+        
       />
     </Stack>
   );

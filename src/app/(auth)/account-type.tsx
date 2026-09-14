@@ -57,7 +57,7 @@ export default function AccountTypeScreen() {
 
         <AccountOption
           icon="personal"
-          label="Personal user"
+          label="Personal use"
           description="Track money you owe and payments you need to collect personally."
           selected={selectedType === "personal"}
           onPress={() => setSelectedType("personal")}

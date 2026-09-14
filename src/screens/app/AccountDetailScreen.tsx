@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/Button";
+import TopHeader from "@/components/app/TopHeader";
 import { Input } from "@/components/ui/Input";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { changePassword } from "@/lib/api/auth";
@@ -67,6 +68,7 @@ export default function AccountDetailScreen({
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
+      <TopHeader title="Profile" />
       {section === "personal" ? (
         <Panel
           icon={{
@@ -394,7 +396,7 @@ function Info({
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.surface, flex: 1 },
-  content: { padding: spacing.xl, paddingBottom: 40 },
+  content: { gap: spacing.xl, padding: spacing.xl, paddingBottom: 40 },
   panel: {
     backgroundColor: colors.white,
     borderColor: colors.line,

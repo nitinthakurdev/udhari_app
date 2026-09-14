@@ -1,20 +1,38 @@
 import { apiClient } from "@/lib/api/client";
-import type { ApiSuccess } from "@/types/api";
+import type { ApiSuccess, PaginatedApiSuccess } from "@/types/api";
 import type {
   Transition,
+  TransitionBatchCreatePayload,
+  TransitionBalanceSummary,
   TransitionCreatePayload,
+  TransitionListParams,
   TransitionUpdatePayload,
 } from "@/types/models";
 
-export async function getTransitions() {
-  const { data } =
-    await apiClient.get<ApiSuccess<Transition[]>>("/transitions/list");
+export async function getTransitions(params: TransitionListParams = {}) {
+  const { data } = await apiClient.get<PaginatedApiSuccess<Transition>>(
+    "/transitions/list",
+    { params },
+  );
   return data;
 }
 
-export async function getBusinessTransitions(businessUuid: string) {
-  const { data } = await apiClient.get<ApiSuccess<Transition[]>>(
+export async function getBusinessTransitions(
+  businessUuid: string,
+  params: TransitionListParams = {},
+) {
+  const { data } = await apiClient.get<PaginatedApiSuccess<Transition>>(
     `/transitions/business/${businessUuid}`,
+    { params },
+  );
+  return data;
+}
+
+export async function getTransitionSummary(businessUuid?: string) {
+  const { data } = await apiClient.get<ApiSuccess<TransitionBalanceSummary>>(
+    businessUuid
+      ? `/transitions/business/${businessUuid}/summary`
+      : "/transitions/summary",
   );
   return data;
 }
@@ -22,6 +40,14 @@ export async function getBusinessTransitions(businessUuid: string) {
 export async function createTransition(payload: TransitionCreatePayload) {
   const { data } = await apiClient.post<ApiSuccess<Transition>>(
     "/transitions/create",
+    payload,
+  );
+  return data;
+}
+
+export async function createTransitions(payload: TransitionBatchCreatePayload) {
+  const { data } = await apiClient.post<ApiSuccess<Transition[]>>(
+    "/transitions/create-batch",
     payload,
   );
   return data;

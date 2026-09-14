@@ -15,6 +15,7 @@ export interface RegisterPayload {
   phone: string;
   dial_code: string | null;
   password: string;
+  role_slug: "user" | "business";
 }
 
 export async function login(payload: LoginPayload) {

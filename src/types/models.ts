@@ -148,6 +148,46 @@ export interface TransitionCreatePayload {
   comment?: string | null;
 }
 
+export interface TransitionBatchItem {
+  unit_id: number;
+  product_name: string;
+  product_unit_price: number;
+  total_price: number;
+  product_qty?: number;
+  comment?: string | null;
+}
+
+export interface TransitionBatchCreatePayload {
+  business_id: number;
+  items: TransitionBatchItem[];
+  customer_user_id?: number;
+  customer_business_uuid?: string;
+  balance_type?: "payable" | "receivable";
+}
+
+export type TransitionListView = "all" | "unpaid" | "cancelled";
+
+export interface TransitionListParams {
+  page?: number;
+  limit?: number;
+  view?: TransitionListView;
+  party_type?: "user" | "business";
+  party_id?: number;
+}
+
+export interface TransitionBalanceParty {
+  party_type: "user" | "business";
+  party_id: number;
+  account_type: "payable" | "receivable";
+  amount: number;
+}
+
+export interface TransitionBalanceSummary {
+  payable: number;
+  receivable: number;
+  parties: TransitionBalanceParty[];
+}
+
 export type TransitionUpdatePayload = Partial<
   Pick<
     Transition,

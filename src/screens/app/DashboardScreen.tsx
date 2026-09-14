@@ -8,15 +8,21 @@ import {
   getConnectedUsers,
 } from "@/lib/api/connections";
 import { getApiError } from "@/lib/api/errors";
-import { getBusinessTransitions, getTransitions } from "@/lib/api/transitions";
+import { getTransitionSummary } from "@/lib/api/transitions";
 import { useAuthStore } from "@/stores/authStore";
 import type { ApiSuccess } from "@/types/api";
-import type { Business, BusinessConnection, Transition } from "@/types/models";
+import type {
+  Business,
+  BusinessConnection,
+  TransitionBalanceSummary,
+} from "@/types/models";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
-import { StyleSheet, Text, View } from "react-native";
+import { useRouter, type Href } from "expo-router";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const activeBusiness = useAuthStore((state) => state.activeBusiness);
   const businessMode = user?.user_role?.slug === "business";
@@ -37,13 +43,25 @@ export default function DashboardScreen() {
     enabled: businessMode && Boolean(activeBusiness?.uuid),
   });
   const transitionsQuery = useQuery({
-    queryKey: ["transitions", businessMode ? activeBusiness?.uuid : "user"],
-    queryFn: () =>
-      businessMode
-        ? getBusinessTransitions(activeBusiness?.uuid ?? "")
-        : getTransitions(),
+    queryKey: ["transition-summary", businessMode ? activeBusiness?.uuid : "user"],
+    queryFn: () => getTransitionSummary(businessMode ? activeBusiness?.uuid : undefined),
     enabled: !businessMode || Boolean(activeBusiness?.uuid),
   });
+  const openPartyTransitions = (
+    partyType: "user" | "business",
+    partyId: number,
+    partyName: string,
+  ) => {
+    const rolePath = businessMode ? "(business)" : "(user)";
+    router.push({
+      pathname: `/(app)/${rolePath}/(tabs)/transitions`,
+      params: {
+        partyId: String(partyId),
+        partyName,
+        partyType,
+      },
+    } as Href);
+  };
 
   const refreshing =
     connectionsQuery.isFetching ||
@@ -85,12 +103,14 @@ export default function DashboardScreen() {
           transitionsQuery={transitionsQuery}
           usersQuery={usersQuery}
           retry={refresh}
+          onSelectParty={openPartyTransitions}
         />
       ) : (
         <UserDashboard
           connectionsQuery={connectionsQuery}
           transitionsQuery={transitionsQuery}
           retry={refresh}
+          onSelectParty={openPartyTransitions}
         />
       )}
     </Page>
@@ -101,10 +121,16 @@ function UserDashboard({
   connectionsQuery,
   transitionsQuery,
   retry,
+  onSelectParty,
 }: {
   connectionsQuery: UseQueryResult<ApiSuccess<BusinessConnection[]>, Error>;
-  transitionsQuery: UseQueryResult<ApiSuccess<Transition[]>, Error>;
+  transitionsQuery: UseQueryResult<ApiSuccess<TransitionBalanceSummary>, Error>;
   retry: () => void;
+  onSelectParty: (
+    partyType: "user" | "business",
+    partyId: number,
+    partyName: string,
+  ) => void;
 }) {
   if (connectionsQuery.isPending || transitionsQuery.isPending) {
     return <LoadingState label="Loading your account…" />;
@@ -121,34 +147,18 @@ function UserDashboard({
   }
 
   const connections = connectionsQuery.data.data as BusinessConnection[];
-  const transitions = transitionsQuery.data.data as Transition[];
-  const approvedTransitions = transitions.filter(
-    (transition) =>
-      transition.request_status === "approved" &&
-      transition.payment_status === "unpaid",
-  );
-  const payable = approvedTransitions.reduce(
-    (sum, transition) =>
-      transition.account_type === "payable"
-        ? sum + Number(transition.total_price)
-        : sum,
-    0,
-  );
-  const receivable = approvedTransitions.reduce(
-    (sum, transition) =>
-      transition.account_type === "receivable"
-        ? sum + Number(transition.total_price)
-        : sum,
-    0,
-  );
+  const summary = transitionsQuery.data.data;
+  const payable = summary.payable;
+  const receivable = summary.receivable;
   const businessBalances = connections.map((connection) => ({
-    amount: approvedTransitions
-      .filter(
-        (transition) =>
-          transition.business_id === connection.business_id &&
-          transition.account_type === "payable",
-      )
-      .reduce((sum, transition) => sum + Number(transition.total_price), 0),
+    amount:
+      summary.parties.find(
+        (party) =>
+          party.party_type === "business" &&
+          party.party_id === connection.business_id &&
+          party.account_type === "payable",
+      )?.amount ?? 0,
+    id: connection.business_id,
     name: connection.business?.name ?? "Connected business",
     uuid: connection.uuid,
   }));
@@ -233,7 +243,17 @@ function UserDashboard({
         ) : (
           <View style={styles.recordList}>
             {businessBalances.map((business) => (
-              <View style={styles.businessBalanceRow} key={business.uuid}>
+              <Pressable
+                accessibilityRole="button"
+                key={business.uuid}
+                onPress={() =>
+                  onSelectParty("business", business.id, business.name)
+                }
+                style={({ pressed }) => [
+                  styles.businessBalanceRow,
+                  pressed && styles.recordRowPressed,
+                ]}
+              >
                 <View style={styles.businessBalanceIcon}>
                   <SymbolView
                     name={{ ios: "building.2.fill", android: "business", web: "business" }}
@@ -265,7 +285,16 @@ function UserDashboard({
                     ]}
                   />
                 </View>
-              </View>
+                <SymbolView
+                  name={{
+                    ios: "chevron.right",
+                    android: "chevron_right",
+                    web: "chevron_right",
+                  }}
+                  size={16}
+                  tintColor={colors.slate400}
+                />
+              </Pressable>
             ))}
           </View>
         )}
@@ -281,13 +310,19 @@ function BusinessDashboard({
   transitionsQuery,
   usersQuery,
   retry,
+  onSelectParty,
 }: {
   activeBusiness: Business | null;
   businessesQuery: UseQueryResult<ApiSuccess<Business[]>, Error>;
   connectionsQuery: UseQueryResult<ApiSuccess<BusinessConnection[]>, Error>;
-  transitionsQuery: UseQueryResult<ApiSuccess<Transition[]>, Error>;
+  transitionsQuery: UseQueryResult<ApiSuccess<TransitionBalanceSummary>, Error>;
   usersQuery: UseQueryResult<ApiSuccess<BusinessConnection[]>, Error>;
   retry: () => void;
+  onSelectParty: (
+    partyType: "user" | "business",
+    partyId: number,
+    partyName: string,
+  ) => void;
 }) {
   if (
     businessesQuery.isPending ||
@@ -317,72 +352,35 @@ function BusinessDashboard({
     );
   }
 
-  const transitions = transitionsQuery.data?.data ?? [];
-  const approvedTransitions = transitions.filter(
-    (transition) =>
-      transition.request_status === "approved" &&
-      transition.payment_status === "unpaid",
-  );
-  const payable = approvedTransitions.reduce(
-    (sum, transition) =>
-      transition.account_type === "payable"
-        ? sum + Number(transition.total_price)
-        : sum,
-    0,
-  );
-  const receivable = approvedTransitions.reduce(
-    (sum, transition) =>
-      transition.account_type === "receivable"
-        ? sum + Number(transition.total_price)
-        : sum,
-    0,
-  );
-  const payableBusinessCount = new Set(
-    approvedTransitions
-      .filter(
-        (transition) =>
-          transition.customer_business_id !== null &&
-          transition.account_type === "payable",
-      )
-      .map((transition) =>
-        transition.account_type === transition.balance_type
-          ? transition.business_id
-          : transition.customer_business_id,
-      ),
-  ).size;
-  const receivableBusinessCount = new Set(
-    approvedTransitions
-      .filter(
-        (transition) =>
-          transition.customer_business_id !== null &&
-          transition.account_type === "receivable",
-      )
-      .map((transition) =>
-        transition.account_type === transition.balance_type
-          ? transition.business_id
-          : transition.customer_business_id,
-      ),
-  ).size;
-  const unpaidCustomerCount = new Set(
-    approvedTransitions
-      .filter(
-        (transition) =>
-          transition.customer_business_id === null &&
-          transition.account_type === "receivable",
-      )
-      .map((transition) => transition.customer_user_id),
-  ).size;
-  const paidCustomerCount = new Set(
-    transitions
-      .filter(
-        (transition) =>
-          transition.request_status === "approved" &&
-          transition.payment_status === "paid" &&
-          transition.customer_business_id === null &&
-          transition.account_type === "receivable",
-      )
-      .map((transition) => transition.customer_user_id),
-  ).size;
+  const summary = transitionsQuery.data?.data ?? {
+    payable: 0,
+    receivable: 0,
+    parties: [],
+  };
+  const payable = summary.payable;
+  const receivable = summary.receivable;
+  const customerBalances = summary.parties
+    .filter(
+      (party) =>
+        party.party_type === "user" && party.account_type === "receivable",
+    )
+    .map((party) => ({
+      amount: party.amount,
+      id: party.party_id,
+      name: getCustomerName(party.party_id, usersQuery.data?.data ?? []),
+    }))
+    .sort((left, right) => right.amount - left.amount);
+  const businessBalances = summary.parties
+    .filter(
+      (party) =>
+        party.party_type === "business" && party.account_type === "payable",
+    )
+    .map((party) => ({
+      amount: party.amount,
+      id: party.party_id,
+      name: getBusinessName(party.party_id, connectionsQuery.data?.data ?? []),
+    }))
+    .sort((left, right) => right.amount - left.amount);
 
   return (
     <>
@@ -442,44 +440,175 @@ function BusinessDashboard({
             />
           </View>
 
-          <View style={styles.relationshipSection}>
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>RELATIONSHIPS</Text>
-                <Text style={styles.sectionTitle}>Who needs attention</Text>
-              </View>
-            </View>
-            <View style={styles.countGrid}>
-              <CountCard
-                icon={{ ios: "arrow.up.right", android: "north_east", web: "north_east" }}
-                label="Businesses to pay"
-                value={payableBusinessCount}
-                tone="orange"
-              />
-              <CountCard
-                icon={{ ios: "arrow.down.left", android: "south_west", web: "south_west" }}
-                label="Businesses to receive from"
-                value={receivableBusinessCount}
-                tone="green"
-              />
-              <CountCard
-                icon={{ ios: "clock", android: "schedule", web: "schedule" }}
-                label="Customers yet to pay"
-                value={unpaidCustomerCount}
-                tone="orange"
-              />
-              <CountCard
-                icon={{ ios: "checkmark.circle", android: "check_circle", web: "check_circle" }}
-                label="Customers paid"
-                value={paidCustomerCount}
-                tone="green"
-              />
-            </View>
-          </View>
+          <OutstandingList
+            emptyMessage="No customers currently owe this business."
+            eyebrow="CUSTOMER RECEIVABLES"
+            items={customerBalances}
+            title="Customers who need to pay"
+            tone="green"
+            type="customer"
+            onSelect={(item) => onSelectParty("user", item.id, item.name)}
+          />
+
+          <OutstandingList
+            emptyMessage="This business has no outstanding payments to other businesses."
+            eyebrow="BUSINESS PAYABLES"
+            items={businessBalances}
+            title="Businesses to pay"
+            tone="orange"
+            type="business"
+            onSelect={(item) => onSelectParty("business", item.id, item.name)}
+          />
         </>
       ) : null}
     </>
   );
+}
+
+type OutstandingParty = {
+  amount: number;
+  id: number;
+  name: string;
+};
+
+function OutstandingList({
+  emptyMessage,
+  eyebrow,
+  items,
+  title,
+  tone,
+  type,
+  onSelect,
+}: {
+  emptyMessage: string;
+  eyebrow: string;
+  items: OutstandingParty[];
+  title: string;
+  tone: "orange" | "green";
+  type: "business" | "customer";
+  onSelect: (item: OutstandingParty) => void;
+}) {
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+
+  return (
+    <View style={styles.recordsSection}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.grow}>
+          <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          <Text style={styles.sectionSummary}>
+            {items.length} {items.length === 1 ? type : `${type}s`} ·{" "}
+            {formatAmount(total)} total
+          </Text>
+        </View>
+        <View style={styles.sectionCount}>
+          <SymbolView
+            name={
+              type === "customer"
+                ? { ios: "person.2", android: "group", web: "group" }
+                : { ios: "building.2", android: "business", web: "business" }
+            }
+            size={13}
+            tintColor={colors.brand600}
+          />
+          <Text style={styles.sectionCountText}>{items.length}</Text>
+        </View>
+      </View>
+
+      {items.length === 0 ? (
+        <EmptyState title="Nothing outstanding" message={emptyMessage} />
+      ) : (
+        <View style={styles.recordList}>
+          {items.map((item) => (
+            <Pressable
+              accessibilityRole="button"
+              key={`${type}-${item.id}`}
+              onPress={() => onSelect(item)}
+              style={({ pressed }) => [
+                styles.businessBalanceRow,
+                pressed && styles.recordRowPressed,
+              ]}
+            >
+              <View style={styles.businessBalanceIcon}>
+                <SymbolView
+                  name={
+                    type === "customer"
+                      ? { ios: "person.fill", android: "person", web: "person" }
+                      : {
+                          ios: "building.2.fill",
+                          android: "business",
+                          web: "business",
+                        }
+                  }
+                  size={17}
+                  tintColor={colors.brand600}
+                />
+              </View>
+              <View style={styles.grow}>
+                <Text numberOfLines={1} style={styles.businessBalanceName}>
+                  {item.name}
+                </Text>
+                <Text style={styles.businessBalanceMeta}>
+                  {type === "customer"
+                    ? "Amount due to your business"
+                    : "Amount your business needs to pay"}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.businessBalanceAmount,
+                  tone === "green" && styles.greenText,
+                ]}
+              >
+                {formatAmount(item.amount)}
+              </Text>
+              <SymbolView
+                name={{
+                  ios: "chevron.right",
+                  android: "chevron_right",
+                  web: "chevron_right",
+                }}
+                size={16}
+                tintColor={colors.slate400}
+              />
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function getConnectionUserId(connection: BusinessConnection) {
+  return connection.role === "business"
+    ? connection.connect_user_id
+    : connection.created_by;
+}
+
+function getCustomerName(id: number, connections: BusinessConnection[]) {
+  const connection = connections.find(
+    (candidate) => getConnectionUserId(candidate) === id,
+  );
+  const customer =
+    connection?.role === "business"
+      ? connection.connected_user
+      : connection?.creator;
+
+  return customer
+    ? [customer.first_name, customer.last_name].filter(Boolean).join(" ")
+    : "Unavailable customer";
+}
+
+function getBusinessName(id: number, connections: BusinessConnection[]) {
+  const connection = connections.find(
+    (candidate) =>
+      candidate.business_id === id || candidate.source_business_id === id,
+  );
+
+  if (connection?.business_id === id) {
+    return connection.business?.name ?? "Unavailable business";
+  }
+  return connection?.source_business?.name ?? "Unavailable business";
 }
 
 function BalanceCard({
@@ -512,45 +641,6 @@ function BalanceCard({
       <Text numberOfLines={1} adjustsFontSizeToFit style={styles.balanceValue}>
         {value}
       </Text>
-    </View>
-  );
-}
-
-function CountCard({
-  icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: SymbolViewProps["name"];
-  label: string;
-  value: number;
-  tone: "orange" | "green" | "blue";
-}) {
-  const toneStyle =
-    tone === "orange"
-      ? styles.orangeBg
-      : tone === "green"
-        ? styles.greenBg
-        : styles.blueBg;
-  const tintColor =
-    tone === "orange" ? "#ea580c" : tone === "green" ? "#059669" : colors.brand600;
-  return (
-    <View style={styles.countCard}>
-      <View style={[styles.icon, toneStyle]}>
-        <SymbolView name={icon} size={19} tintColor={tintColor} />
-      </View>
-      <View style={styles.grow}>
-        <Text style={styles.countLabel}>{label}</Text>
-        <Text style={styles.countValue}>
-          {value} {value === 1 ? "account" : "accounts"}
-        </Text>
-      </View>
-      <SymbolView
-        name={{ ios: "chevron.right", android: "chevron_right", web: "chevron_right" }}
-        size={16}
-        tintColor={colors.slate400}
-      />
     </View>
   );
 }
@@ -628,8 +718,6 @@ const styles = StyleSheet.create({
   },
   orangeBg: { backgroundColor: "#fff7ed" },
   greenBg: { backgroundColor: "#ecfdf5" },
-  blueBg: { backgroundColor: colors.brand50 },
-  orangeText: { color: "#ea580c" },
   greenText: { color: "#059669" },
   balanceLabel: {
     color: colors.slate500,
@@ -643,32 +731,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     letterSpacing: -0.6,
     marginTop: spacing.xs,
-  },
-  relationshipSection: { gap: spacing.md },
-  countGrid: { gap: spacing.sm },
-  countCard: {
-    alignItems: "center",
-    backgroundColor: colors.white,
-    borderColor: colors.line,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing.md,
-    minHeight: 68,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  countLabel: {
-    color: colors.slate500,
-    fontFamily: typography.fontFamilyMedium,
-    fontSize: 10,
-    lineHeight: 14,
-  },
-  countValue: {
-    color: colors.ink,
-    fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 14,
-    marginTop: 2,
   },
   recordsSection: { gap: spacing.md },
   sectionHeader: {
@@ -687,6 +749,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilyExtraBold,
     fontSize: 18,
     marginTop: 3,
+  },
+  sectionSummary: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilyMedium,
+    fontSize: 10,
+    marginTop: spacing.xs,
   },
   sectionCount: {
     alignItems: "center",
@@ -719,6 +787,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingHorizontal: spacing.lg,
   },
+  recordRowPressed: { backgroundColor: colors.brand50 },
   recordRow: {
     alignItems: "center",
     borderBottomColor: colors.line,
@@ -753,13 +822,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilyBold,
     fontSize: 7,
     marginTop: 4,
-  },
-  icon: {
-    alignItems: "center",
-    borderRadius: radii.md,
-    height: 44,
-    justifyContent: "center",
-    width: 44,
   },
   businessPanel: {
     backgroundColor: colors.ink,
