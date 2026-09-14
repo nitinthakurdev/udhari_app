@@ -1,5 +1,4 @@
 import { stackNavigation } from "@/constants/navigationAnimations";
-import { colors, typography } from "@/constants/theme";
 import { Stack } from "expo-router";
 
 export default function UserLayout() {

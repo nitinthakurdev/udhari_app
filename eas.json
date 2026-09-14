@@ -19,7 +19,10 @@
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+         "EXPO_PUBLIC_API_URL": "https://staging-api.udhari.in/api/v1"
+      }
     }
   },
   "submit": {
