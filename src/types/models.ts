@@ -130,6 +130,8 @@ export interface Transition {
   account_type: "payable" | "receivable";
   comment: string | null;
   created_by: number | null;
+  updated_by: number | null;
+  unit: Pick<Unit, "name" | "code"> | null;
   created_at: string;
   updated_at: string;
 }
@@ -165,7 +167,7 @@ export interface TransitionBatchCreatePayload {
   balance_type?: "payable" | "receivable";
 }
 
-export type TransitionListView = "all" | "unpaid" | "cancelled";
+export type TransitionListView = "all" | "pending" | "unpaid" | "cancelled";
 
 export interface TransitionListParams {
   page?: number;

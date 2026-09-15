@@ -8,7 +8,8 @@
     "scheme": "udhariapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/ios/iTunesArtwork@2x.png"
+      "icon": "./assets/ios/iTunesArtwork@2x.png",
+      "bundleIdentifier": "com.udhari.app"
     },
     "android": {
       "icon": "./assets/android/playstore-icon.png",

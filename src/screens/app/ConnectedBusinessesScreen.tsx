@@ -12,6 +12,7 @@ import {
   respondToConnectionRequest,
 } from "@/lib/api/connections";
 import { getApiError } from "@/lib/api/errors";
+import { getTransitionSummary } from "@/lib/api/transitions";
 import { useAuthStore } from "@/stores/authStore";
 import type { BusinessConnection } from "@/types/models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -30,6 +31,34 @@ function getCounterpartBusiness(
     : connection.source_business ?? connection.business;
 }
 
+function getCounterpartBusinessId(
+  connection: BusinessConnection,
+  activeBusinessUuid?: string,
+) {
+  return connection.source_business?.uuid === activeBusinessUuid
+    ? connection.business_id
+    : (connection.source_business_id ?? connection.business_id);
+}
+
+function getOutstandingAmount(
+  parties: { party_type: "user" | "business"; party_id: number; amount: number }[],
+  businessId: number,
+) {
+  return parties.reduce(
+    (total, party) =>
+      party.party_type === "business" && party.party_id === businessId
+        ? total + Math.abs(Number(party.amount))
+        : total,
+    0,
+  );
+}
+
+function formatAmount(value: number) {
+  return `₹${Number(value).toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export default function ConnectedBusinessesScreen() {
   const queryClient = useQueryClient();
   const role = useAuthStore((state) => state.user?.user_role?.slug);
@@ -37,6 +66,9 @@ export default function ConnectedBusinessesScreen() {
   const businessMode = role === "business";
   const [searchInput, setSearchInput] = useState("");
   const [searchKey, setSearchKey] = useState("");
+  const [checkingConnectionUuid, setCheckingConnectionUuid] = useState<
+    string | null
+  >(null);
   const connectionsQuery = useQuery({
     queryKey: [...connectionQueryKey, businessMode ? activeBusiness?.uuid : "user"],
     queryFn: () =>
@@ -46,6 +78,15 @@ export default function ConnectedBusinessesScreen() {
   const requestsQuery = useQuery({
     queryKey: ["connection-requests"],
     queryFn: getConnectionRequests,
+  });
+  const transitionSummaryQuery = useQuery({
+    queryKey: [
+      "transition-summary",
+      businessMode ? activeBusiness?.uuid : "user",
+    ],
+    queryFn: () =>
+      getTransitionSummary(businessMode ? activeBusiness?.uuid : undefined),
+    enabled: !businessMode || Boolean(activeBusiness?.uuid),
   });
   const searchQuery = useQuery({
     queryKey: ["business-search", searchKey],
@@ -107,9 +148,7 @@ export default function ConnectedBusinessesScreen() {
   const connections = connectionsQuery.data?.data ?? [];
   const connectedIds = new Set(
     connections.map((connection) =>
-      connection.source_business?.uuid === activeBusiness?.uuid
-        ? connection.business_id
-        : (connection.source_business_id ?? connection.business_id),
+      getCounterpartBusinessId(connection, activeBusiness?.uuid),
     ),
   );
   const suggestions =
@@ -122,10 +161,44 @@ export default function ConnectedBusinessesScreen() {
   const searchSettled =
     normalizedSearch.length >= 2 && normalizedSearch === searchKey;
 
-  const confirmDisconnect = (connection: BusinessConnection) => {
+  const confirmDisconnect = async (connection: BusinessConnection) => {
+    setCheckingConnectionUuid(connection.uuid);
+    const summaryResult = await transitionSummaryQuery.refetch();
+    setCheckingConnectionUuid(null);
+
+    if (summaryResult.isError || !summaryResult.data) {
+      Alert.alert(
+        "Could not verify balance",
+        summaryResult.error
+          ? getApiError(summaryResult.error).message
+          : "Please try again before disconnecting this business.",
+      );
+      return;
+    }
+
+    const counterpartId = getCounterpartBusinessId(
+      connection,
+      activeBusiness?.uuid,
+    );
+    const outstandingAmount = getOutstandingAmount(
+      summaryResult.data.data.parties,
+      counterpartId,
+    );
+    const counterpartName =
+      getCounterpartBusiness(connection, activeBusiness?.uuid)?.name ??
+      "this business";
+
+    if (outstandingAmount > 0) {
+      Alert.alert(
+        "Full payment required",
+        `${counterpartName} has an outstanding balance of ${formatAmount(outstandingAmount)}. Complete all payable and receivable payments before disconnecting.`,
+      );
+      return;
+    }
+
     Alert.alert(
       "Disconnect business?",
-      `Remove ${getCounterpartBusiness(connection, activeBusiness?.uuid)?.name ?? "this business"} from your connections?`,
+      `Remove ${counterpartName} from your connections?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -143,8 +216,15 @@ export default function ConnectedBusinessesScreen() {
       eyebrow="MANAGEMENT"
       title="Connected businesses"
       subtitle="Find businesses owned by other accounts and manage your connections."
-      refreshing={connectionsQuery.isFetching}
-      onRefresh={() => void connectionsQuery.refetch()}
+      refreshing={
+        connectionsQuery.isFetching || transitionSummaryQuery.isFetching
+      }
+      onRefresh={() =>
+        void Promise.all([
+          connectionsQuery.refetch(),
+          transitionSummaryQuery.refetch(),
+        ])
+      }
     >
       <View style={styles.searchPanel}>
         <Text style={styles.panelTitle}>Find a business</Text>
@@ -333,10 +413,14 @@ export default function ConnectedBusinessesScreen() {
                 variant="danger"
                 size="sm"
                 loading={
-                  disconnectMutation.isPending &&
-                  disconnectMutation.variables === connection.uuid
+                  checkingConnectionUuid === connection.uuid ||
+                  (disconnectMutation.isPending &&
+                    disconnectMutation.variables === connection.uuid)
                 }
-                onPress={() => confirmDisconnect(connection)}
+                disabled={
+                  checkingConnectionUuid !== null || disconnectMutation.isPending
+                }
+                onPress={() => void confirmDisconnect(connection)}
               />
             </View>
           ))}

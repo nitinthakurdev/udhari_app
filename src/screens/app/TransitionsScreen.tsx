@@ -52,6 +52,8 @@ interface TransitionLineForm {
   productName: string;
   quantity: string;
   productPrice: string;
+  totalPrice: string;
+  calculationSource: "unit_price" | "total_price" | null;
   comment: string;
 }
 
@@ -65,6 +67,8 @@ interface AdditionalTransitionForm extends TransitionLineForm {
   productName: string;
   quantity: string;
   productPrice: string;
+  totalPrice: string;
+  calculationSource: "unit_price" | "total_price" | null;
   comment: string;
 }
 
@@ -76,6 +80,8 @@ const emptyForm: TransitionForm = {
   productName: "",
   quantity: "1",
   productPrice: "",
+  totalPrice: "",
+  calculationSource: null,
   balanceType: "payable",
   comment: "",
 };
@@ -304,6 +310,8 @@ export default function TransitionsScreen() {
       productName: transition.product_name,
       quantity: String(transition.product_qty),
       productPrice: String(transition.product_unit_price),
+      totalPrice: String(transition.total_price),
+      calculationSource: "unit_price",
       balanceType: transition.balance_type,
       comment: transition.comment ?? "",
     });
@@ -324,7 +332,11 @@ export default function TransitionsScreen() {
 
     for (const [index, item] of itemForms.entries()) {
       const quantity = Number(item.quantity);
-      const productPrice = Number(item.productPrice);
+      const productPrice =
+        item.productPrice.trim() === "" && quantity === 0
+          ? 0
+          : Number(item.productPrice);
+      const totalPrice = Number(item.totalPrice);
       const selectedUnitId = Number(item.unitId);
       const productName = item.productName.trim();
       const itemLabel = itemForms.length > 1 ? `Item ${index + 1}: ` : "";
@@ -333,15 +345,15 @@ export default function TransitionsScreen() {
         Alert.alert("Product required", `${itemLabel}enter at least two characters.`);
         return;
       }
-      if (!Number.isFinite(quantity) || quantity <= 0) {
+      if (!Number.isFinite(quantity) || quantity < 0) {
         Alert.alert(
           "Invalid quantity",
-          `${itemLabel}quantity must be greater than zero.`,
+          `${itemLabel}quantity must be zero or greater.`,
         );
         return;
       }
       if (
-        item.productPrice.trim() === "" ||
+        (item.productPrice.trim() === "" && quantity !== 0) ||
         !Number.isFinite(productPrice) ||
         productPrice < 0
       ) {
@@ -351,11 +363,15 @@ export default function TransitionsScreen() {
         );
         return;
       }
-      const totalPrice = calculateFormTotal(item);
-      if (totalPrice > 9_999_999_999.99) {
+      if (
+        item.totalPrice.trim() === "" ||
+        !Number.isFinite(totalPrice) ||
+        totalPrice < 0 ||
+        totalPrice > 9_999_999_999.99
+      ) {
         Alert.alert(
           "Invalid total",
-          `${itemLabel}calculated total price is too large.`,
+          `${itemLabel}total price must be between zero and 9,999,999,999.99.`,
         );
         return;
       }
@@ -468,6 +484,8 @@ export default function TransitionsScreen() {
         productName: "",
         quantity: "1",
         productPrice: "",
+        totalPrice: "",
+        calculationSource: null,
         comment: "",
       },
     ]);
@@ -669,9 +687,15 @@ export default function TransitionsScreen() {
                 const locked = transition.request_status !== "pending";
                 const currentIsCustomerSide =
                   transition.account_type === transition.balance_type;
+                const currentSideUserId = currentIsCustomerSide
+                  ? transition.customer_user_id
+                  : transition.business_user_id;
                 const createdByCurrentSide = currentIsCustomerSide
                   ? transition.created_by === transition.customer_user_id
                   : transition.created_by === transition.business_user_id;
+                const proposedByCurrentSide =
+                  (transition.updated_by ?? transition.created_by) ===
+                  currentSideUserId;
 
                 return (
                   <View style={styles.card} key={transition.uuid}>
@@ -708,11 +732,12 @@ export default function TransitionsScreen() {
                     </View>
 
                     <View style={styles.metaRow}>
-                      <Text style={styles.quantity}>
-                        Qty {transition.product_qty}
+                      <Text style={styles.metaValue}>
+                        Qty: {formatQuantity(transition.product_qty)}{" "}
+                        {transition.unit?.code ?? transition.unit?.name ?? ""}
                       </Text>
-                      <Text style={styles.quantity}>
-                        {formatAmount(transition.product_unit_price)} each
+                      <Text style={styles.metaValue}>
+                        Each: {formatAmount(transition.product_unit_price)}
                       </Text>
                       <Text style={styles.date}>
                         {formatDate(transition.created_at)}
@@ -783,7 +808,7 @@ export default function TransitionsScreen() {
 
                     {!locked ? (
                       <View style={styles.actions}>
-                        {!createdByCurrentSide ? (
+                        {!proposedByCurrentSide ? (
                           <Button
                             label="Approve"
                             size="sm"
@@ -799,14 +824,13 @@ export default function TransitionsScreen() {
                             }
                           />
                         ) : null}
+                        <Button
+                          label="Edit"
+                          size="sm"
+                          variant="outline"
+                          onPress={() => openEdit(transition)}
+                        />
                         {createdByCurrentSide ? (
-                          <>
-                            <Button
-                              label="Edit"
-                              size="sm"
-                              variant="outline"
-                              onPress={() => openEdit(transition)}
-                            />
                             <Button
                               label="Cancel"
                               size="sm"
@@ -817,7 +841,6 @@ export default function TransitionsScreen() {
                               }
                               onPress={() => confirmCancel(transition)}
                             />
-                          </>
                         ) : null}
                       </View>
                     ) : null}
@@ -1093,8 +1116,40 @@ function TransitionItemFields({
   onRemove?: () => void;
   onSelectUnit: (id: string) => void;
 }) {
-  const update = (field: keyof TransitionLineForm, value: string) =>
-    onChange({ ...item, [field]: value });
+  const update = (field: keyof TransitionLineForm, value: string) => {
+    const nextItem = { ...item, [field]: value };
+
+    if (field === "productPrice") {
+      if (value.trim() !== "") {
+        nextItem.calculationSource = "unit_price";
+        nextItem.totalPrice = String(calculateFormTotal(nextItem));
+      } else {
+        nextItem.calculationSource = nextItem.totalPrice.trim()
+          ? "total_price"
+          : null;
+      }
+    } else if (field === "quantity") {
+      if (
+        nextItem.calculationSource === "total_price" ||
+        (nextItem.productPrice.trim() === "" && nextItem.totalPrice.trim() !== "")
+      ) {
+        nextItem.productPrice = calculateFormUnitPrice(nextItem);
+      } else if (nextItem.productPrice.trim() !== "") {
+        nextItem.totalPrice = String(calculateFormTotal(nextItem));
+      }
+    } else if (field === "totalPrice") {
+      if (value.trim() !== "") {
+        nextItem.calculationSource = "total_price";
+        nextItem.productPrice = calculateFormUnitPrice(nextItem);
+      } else {
+        nextItem.calculationSource = nextItem.productPrice.trim()
+          ? "unit_price"
+          : null;
+      }
+    }
+
+    onChange(nextItem);
+  };
 
   return (
     <View style={title ? styles.itemCard : undefined}>
@@ -1144,12 +1199,13 @@ function TransitionItemFields({
             containerStyle={styles.priceField}
           />
         </View>
-        <View style={styles.totalPreview}>
-          <Text style={styles.totalPreviewLabel}>Calculated total</Text>
-          <Text style={styles.totalPreviewValue}>
-            {formatAmount(calculateFormTotal(item))}
-          </Text>
-        </View>
+        <Input
+          label="Total price"
+          value={item.totalPrice}
+          keyboardType="decimal-pad"
+          placeholder="0.00"
+          onChangeText={(value) => update("totalPrice", value)}
+        />
         <Input
           label="Comment"
           value={item.comment}
@@ -1458,6 +1514,12 @@ function formatAmount(value: number) {
   }).format(value);
 }
 
+function formatQuantity(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function calculateFormTotal(form: TransitionLineForm) {
   const quantity = Number(form.quantity);
   const productPrice = Number(form.productPrice);
@@ -1465,6 +1527,23 @@ function calculateFormTotal(form: TransitionLineForm) {
   if (!Number.isFinite(quantity) || !Number.isFinite(productPrice)) return 0;
 
   return Math.round((quantity * productPrice + Number.EPSILON) * 100) / 100;
+}
+
+function calculateFormUnitPrice(form: TransitionLineForm) {
+  const quantity = Number(form.quantity);
+  const totalPrice = Number(form.totalPrice);
+
+  if (
+    !Number.isFinite(quantity) ||
+    quantity <= 0 ||
+    !Number.isFinite(totalPrice)
+  ) {
+    return "";
+  }
+
+  const unitPrice =
+    Math.round((totalPrice / quantity + Number.EPSILON) * 100) / 100;
+  return String(unitPrice);
 }
 
 function formatDate(value: string) {
@@ -1583,11 +1662,21 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilyExtraBold,
     fontSize: 15,
   },
-  metaRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
-  quantity: {
+  metaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  metaValue: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.full,
     color: colors.slate700,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 10,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   date: {
     color: colors.slate500,
@@ -1776,23 +1865,5 @@ const styles = StyleSheet.create({
   unitField: { flex: 1.05, minWidth: 0 },
   quantityField: { flex: 0.7, minWidth: 0 },
   priceField: { flex: 1.15, minWidth: 0 },
-  totalPreview: {
-    alignItems: "center",
-    backgroundColor: colors.brand50,
-    borderRadius: radii.md,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: spacing.md,
-  },
-  totalPreviewLabel: {
-    color: colors.brand700,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 11,
-  },
-  totalPreviewValue: {
-    color: colors.ink,
-    fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 16,
-  },
   commentInput: { minHeight: 72, textAlignVertical: "top" },
 });

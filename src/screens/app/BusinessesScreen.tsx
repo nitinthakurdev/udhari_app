@@ -13,6 +13,7 @@ import {
   updateBusiness,
 } from "@/lib/api/businesses";
 import { getApiError } from "@/lib/api/errors";
+import { getTransitionSummary } from "@/lib/api/transitions";
 import { useAuthStore } from "@/stores/authStore";
 import type { Business, BusinessPayload } from "@/types/models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -69,6 +70,9 @@ export default function BusinessesScreen() {
   const [formBusiness, setFormBusiness] = useState<Business | null | undefined>(
     undefined,
   );
+  const [checkingBusinessUuid, setCheckingBusinessUuid] = useState<
+    string | null
+  >(null);
 
   const refreshUser = async () => {
     const currentUser = await getCurrentUser();
@@ -158,7 +162,29 @@ export default function BusinessesScreen() {
       },
     });
   });
-  const confirmDelete = (business: Business) => {
+  const confirmDelete = async (business: Business) => {
+    setCheckingBusinessUuid(business.uuid);
+
+    try {
+      const summary = await getTransitionSummary(business.uuid);
+      const outstandingAmount =
+        Math.abs(Number(summary.data.payable)) +
+        Math.abs(Number(summary.data.receivable));
+
+      if (outstandingAmount > 0) {
+        Alert.alert(
+          "Full payment required",
+          `${business.name} has an outstanding balance of ${formatAmount(outstandingAmount)}. Complete all payable and receivable payments before deleting this business.`,
+        );
+        return;
+      }
+    } catch (error) {
+      Alert.alert("Could not verify balance", getApiError(error).message);
+      return;
+    } finally {
+      setCheckingBusinessUuid(null);
+    }
+
     Alert.alert("Delete business?", `Permanently delete ${business.name}?`, [
       { text: "Cancel", style: "cancel" },
       {
@@ -247,7 +273,15 @@ export default function BusinessesScreen() {
                     label="Delete"
                     variant="danger"
                     size="sm"
-                    onPress={() => confirmDelete(business)}
+                    loading={
+                      checkingBusinessUuid === business.uuid ||
+                      (deleteMutation.isPending &&
+                        deleteMutation.variables === business.uuid)
+                    }
+                    disabled={
+                      checkingBusinessUuid !== null || deleteMutation.isPending
+                    }
+                    onPress={() => void confirmDelete(business)}
                   />
                 </View>
               </View>
@@ -371,6 +405,12 @@ export default function BusinessesScreen() {
       </Modal>
     </Page>
   );
+}
+
+function formatAmount(value: number) {
+  return `₹${Number(value).toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function BusinessField({

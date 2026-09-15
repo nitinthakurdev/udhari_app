@@ -1,4 +1,11 @@
 import { colors, typography } from "@/constants/theme";
+import { getConnectionRequests } from "@/lib/api/connections";
+import {
+  getBusinessTransitions,
+  getTransitions,
+} from "@/lib/api/transitions";
+import { useAuthStore } from "@/stores/authStore";
+import { useQuery } from "@tanstack/react-query";
 import { Tabs } from "expo-router";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import type { ComponentProps } from "react";
@@ -80,6 +87,12 @@ function screenOptions(): ComponentProps<typeof Tabs>["screenOptions"] {
     tabBarActiveTintColor: colors.brand600,
     tabBarHideOnKeyboard: true,
     tabBarInactiveTintColor: colors.slate500,
+    tabBarBadgeStyle: {
+      backgroundColor: colors.danger600,
+      color: colors.white,
+      fontFamily: typography.fontFamilyBold,
+      fontSize: 10,
+    },
     tabBarLabelStyle: {
       fontFamily: typography.fontFamilySemiBold,
       fontSize: 10,
@@ -93,13 +106,54 @@ function screenOptions(): ComponentProps<typeof Tabs>["screenOptions"] {
 }
 
 export function AppTabs() {
+  const role = useAuthStore((state) => state.user?.user_role?.slug);
+  const activeBusinessUuid = useAuthStore(
+    (state) => state.activeBusiness?.uuid,
+  );
+  const businessMode = role === "business";
+  const requestsQuery = useQuery({
+    queryKey: ["connection-requests"],
+    queryFn: getConnectionRequests,
+    refetchInterval: 30_000,
+  });
+  const pendingTransitionsQuery = useQuery({
+    queryKey: [
+      "transitions",
+      businessMode ? activeBusinessUuid : "user",
+      "pending",
+      "badge",
+    ],
+    queryFn: () =>
+      businessMode
+        ? getBusinessTransitions(activeBusinessUuid ?? "", {
+            page: 1,
+            limit: 1,
+            view: "pending",
+          })
+        : getTransitions({ page: 1, limit: 1, view: "pending" }),
+    enabled: !businessMode || Boolean(activeBusinessUuid),
+    refetchInterval: 30_000,
+  });
+  const pendingRequestCount = requestsQuery.data?.data.incoming.length ?? 0;
+  const pendingTransitionCount =
+    pendingTransitionsQuery.data?.meta.pagination.total ?? 0;
+  const badges: Partial<Record<TabName, number | string>> = {
+    requests: formatBadge(pendingRequestCount),
+    transitions: formatBadge(pendingTransitionCount),
+  };
+
   return (
-    <Tabs screenOptions={screenOptions()}>
+    // RootNavigator already applies the device bottom inset around this navigator.
+    <Tabs
+      safeAreaInsets={{ bottom: 0 }}
+      screenOptions={screenOptions()}
+    >
       {tabs.map((tab) => (
         <Tabs.Screen
           key={tab.name}
           name={tab.name}
           options={{
+            tabBarBadge: badges[tab.name],
             tabBarIcon: ({ color, focused, size }) => (
               <TabIcon
                 color={color}
@@ -116,3 +170,7 @@ export function AppTabs() {
   );
 }
 
+function formatBadge(count: number) {
+  if (count <= 0) return undefined;
+  return count > 99 ? "99+" : count;
+}
