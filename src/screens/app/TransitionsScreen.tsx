@@ -14,7 +14,6 @@ import {
   createTransitions,
   getBusinessTransitions,
   getTransitions,
-  markTransitionPaymentReceived,
   updateTransition,
 } from "@/lib/api/transitions";
 import { getBusinessUnits } from "@/lib/api/units";
@@ -180,6 +179,7 @@ export default function TransitionsScreen() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
         queryClient.invalidateQueries({ queryKey: ["transition-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["billings"] }),
       ]);
       closeForm();
       Alert.alert(
@@ -202,6 +202,7 @@ export default function TransitionsScreen() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
         queryClient.invalidateQueries({ queryKey: ["transition-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["billings"] }),
       ]);
     },
     onError: (error) =>
@@ -213,6 +214,7 @@ export default function TransitionsScreen() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
         queryClient.invalidateQueries({ queryKey: ["transition-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["billings"] }),
       ]);
       Alert.alert(
         "Cancelled",
@@ -221,21 +223,6 @@ export default function TransitionsScreen() {
     },
     onError: (error) =>
       Alert.alert("Could not cancel transition", getApiError(error).message),
-  });
-  const paymentMutation = useMutation({
-    mutationFn: markTransitionPaymentReceived,
-    onSuccess: async (response) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
-        queryClient.invalidateQueries({ queryKey: ["transition-summary"] }),
-      ]);
-      Alert.alert(
-        "Payment received",
-        response.message ?? "Payment marked as received.",
-      );
-    },
-    onError: (error) =>
-      Alert.alert("Could not receive payment", getApiError(error).message),
   });
 
   const customerConnections = customerConnectionsQuery.data?.data ?? [];
@@ -458,20 +445,6 @@ export default function TransitionsScreen() {
         onPress: () => cancelMutation.mutate(transition.uuid),
       },
     ]);
-  };
-
-  const confirmPaymentReceived = (transition: Transition) => {
-    Alert.alert(
-      "Confirm payment received?",
-      `Mark payment for ${transition.product_name} as received? This will remove it from unpaid balances.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Payment received",
-          onPress: () => paymentMutation.mutate(transition.uuid),
-        },
-      ],
-    );
   };
 
   const addTransitionItem = () => {
@@ -779,32 +752,17 @@ export default function TransitionsScreen() {
                       <Text
                         style={[
                           styles.paymentStatus,
-                          transition.payment_status === "paid" &&
+                          transition.payment_status !== "unpaid" &&
                             styles.paymentStatusPaid,
                         ]}
                       >
                         {transition.payment_status === "paid"
                           ? "Paid"
-                          : "Unpaid"}
+                          : transition.payment_status === "partial"
+                            ? `Partial · ${formatAmount(transition.outstanding_amount)} left`
+                            : "Unpaid"}
                       </Text>
                     </View>
-
-                    {businessMode &&
-                    transition.account_type === "receivable" &&
-                    transition.request_status === "approved" &&
-                    transition.payment_status === "unpaid" ? (
-                      <View style={styles.actions}>
-                        <Button
-                          label="Confirm payment received"
-                          size="sm"
-                          loading={
-                            paymentMutation.isPending &&
-                            paymentMutation.variables === transition.uuid
-                          }
-                          onPress={() => confirmPaymentReceived(transition)}
-                        />
-                      </View>
-                    ) : null}
 
                     {!locked ? (
                       <View style={styles.actions}>

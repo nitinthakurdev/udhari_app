@@ -70,10 +70,3 @@ export async function cancelTransition(uuid: string) {
   );
   return data;
 }
-
-export async function markTransitionPaymentReceived(uuid: string) {
-  const { data } = await apiClient.patch<ApiSuccess<Transition>>(
-    `/transitions/payment-received/${uuid}`,
-  );
-  return data;
-}

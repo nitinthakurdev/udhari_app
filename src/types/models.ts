@@ -125,7 +125,9 @@ export interface Transition {
   total_price: number;
   request_status:
     "pending" | "approved" | "rejected" | "not_available" | "cancelled";
-  payment_status: "paid" | "unpaid";
+  paid_amount: number;
+  outstanding_amount: number;
+  payment_status: "paid" | "partial" | "unpaid";
   balance_type: "payable" | "receivable";
   account_type: "payable" | "receivable";
   comment: string | null;
@@ -168,6 +170,33 @@ export interface TransitionBatchCreatePayload {
 }
 
 export type TransitionListView = "all" | "pending" | "unpaid" | "cancelled";
+
+export interface BillingPayment {
+  uuid: string;
+  transition_uuid: string;
+  product_name: string;
+  amount_received: number;
+  created_at: string;
+}
+
+export interface Billing {
+  uuid: string;
+  current_outstanding: number;
+  total_amount: number;
+  amount_received: number;
+  payment_status: "paid" | "partial" | "unpaid";
+  start_date_of_month: string;
+  end_date_of_month: string;
+  due_date: string;
+  extend_due_date: string | null;
+  generated_at: string | null;
+  created_at: string;
+  updated_at: string;
+  customer: Pick<CurrentUser, "uuid" | "first_name" | "last_name" | "username"> | null;
+  customer_business: Pick<Business, "uuid" | "name"> | null;
+  business: Pick<Business, "uuid" | "name"> | null;
+  payments: BillingPayment[];
+}
 
 export interface TransitionListParams {
   page?: number;

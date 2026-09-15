@@ -14,6 +14,12 @@ type ConfigurationItem = {
 
 const businessConfigurationItems: ConfigurationItem[] = [
   {
+    title: "Monthly billing",
+    description: "Track statements, outstanding balances, and received payments.",
+    href: "/(app)/(business)/configuration/billing" as Href,
+    icon: { ios: "doc.text", android: "receipt_long", web: "receipt_long" },
+  },
+  {
     title: "Business management",
     description: "Create, edit, and choose your default business.",
     href: "/(app)/(business)/configuration/businesses",
@@ -40,6 +46,12 @@ const businessConfigurationItems: ConfigurationItem[] = [
 ];
 
 const userConfigurationItems: ConfigurationItem[] = [
+  {
+    title: "Monthly billing",
+    description: "View monthly statements and payment history.",
+    href: "/(app)/(user)/configuration/billing" as Href,
+    icon: { ios: "doc.text", android: "receipt_long", web: "receipt_long" },
+  },
   {
     title: "Connect business",
     description: "Find businesses and manage your active connections.",

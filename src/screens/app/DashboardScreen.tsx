@@ -381,6 +381,17 @@ function BusinessDashboard({
       name: getBusinessName(party.party_id, connectionsQuery.data?.data ?? []),
     }))
     .sort((left, right) => right.amount - left.amount);
+  const businessReceivables = summary.parties
+    .filter(
+      (party) =>
+        party.party_type === "business" && party.account_type === "receivable",
+    )
+    .map((party) => ({
+      amount: party.amount,
+      id: party.party_id,
+      name: getBusinessName(party.party_id, connectionsQuery.data?.data ?? []),
+    }))
+    .sort((left, right) => right.amount - left.amount);
 
   return (
     <>
@@ -448,6 +459,16 @@ function BusinessDashboard({
             tone="green"
             type="customer"
             onSelect={(item) => onSelectParty("user", item.id, item.name)}
+          />
+
+          <OutstandingList
+            emptyMessage="No other businesses currently owe this business."
+            eyebrow="BUSINESS RECEIVABLES"
+            items={businessReceivables}
+            title="Businesses that need to pay"
+            tone="green"
+            type="business"
+            onSelect={(item) => onSelectParty("business", item.id, item.name)}
           />
 
           <OutstandingList
