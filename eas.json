@@ -15,7 +15,9 @@
       "extends": "preview",
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://staging-api.udhari.in/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://staging-api.udhari.in/api/v1",
+        "EXPO_PUBLIC_RAZORPAY_KEY_ID":"rzp_test_TcABBjPgVzSMWe",
+        "EXPO_PUBLIC_MOBILE_PAYMENT_PROVIDER":"razorpay"
       }
     },
     "production": {

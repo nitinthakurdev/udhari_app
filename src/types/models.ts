@@ -213,3 +213,67 @@ export interface Unit {
   created_at: string;
   updated_at: string;
 }
+
+export interface SubscriptionConfig {
+  allowed_transitions: number;
+  allowed_connected_customers: number;
+  allowed_connected_businesses: number;
+  allowed_connected_users: number;
+  allowed_managed_businesses: number;
+}
+
+export interface PublicSubscription {
+  uuid: string;
+  name: string;
+  description: string;
+  features: string[];
+  config: SubscriptionConfig;
+  price: number;
+  currency: string;
+  duration: number;
+  duration_type: "MONTHLY" | "QUARTERLY" | "YEARLY";
+  is_active: boolean;
+  google_play_product_id: string | null;
+  auto_renewal_enabled: boolean;
+  role_id: number;
+  created_at: string;
+  updated_at: string;
+  role: { name: string; slug: "user" | "business" };
+}
+
+export interface UserSubscription {
+  uuid: string;
+  expiry_at: string;
+  created_at: string;
+  updated_at: string;
+  payment_provider: "MANUAL" | "FREE" | "RAZORPAY" | "GOOGLE_PLAY";
+  auto_renew: boolean;
+  user: Pick<
+    CurrentUser,
+    "uuid" | "first_name" | "last_name" | "email" | "username"
+  >;
+  subscription: Omit<
+    PublicSubscription,
+    "role" | "role_id" | "created_at" | "updated_at"
+  >;
+}
+
+export interface RazorpayOrder {
+  key_id?: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+}
+
+export interface RazorpayPaymentPayload {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}
+
+export interface RazorpayPaymentVerification {
+  verified: true;
+  order_id: string;
+  payment_id: string;
+  user_subscription_uuid: string;
+}

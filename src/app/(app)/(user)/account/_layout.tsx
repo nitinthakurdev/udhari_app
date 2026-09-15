@@ -12,6 +12,7 @@ export default function AccountLayout() {
         headerShown:false
       }}
     >
+      <Stack.Screen name="upgrade" options={{ title: "Upgrade plan" }} />
       <Stack.Screen name="personal-info" options={{ title: "Personal info" }} />
       <Stack.Screen name="change-password" options={{ title: "Change password" }} />
       <Stack.Screen name="privacy-policy" options={{ title: "Privacy policy" }} />

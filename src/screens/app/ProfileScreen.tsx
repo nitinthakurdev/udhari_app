@@ -15,6 +15,12 @@ const accountItems: {
   icon: SymbolViewProps["name"];
 }[] = [
   {
+    path: "upgrade",
+    label: "Upgrade plan",
+    description: "Compare plans and increase your account limits.",
+    icon: { ios: "crown", android: "workspace_premium", web: "workspace_premium" },
+  },
+  {
     path: "personal-info",
     label: "Personal info",
     description: "View your account and contact details.",
