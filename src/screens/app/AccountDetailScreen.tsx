@@ -28,6 +28,14 @@ const strongPassword = (value: string) =>
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9]).{8,72}$/.test(value) ||
   "Use 8–72 characters with upper, lower, number, and symbol.";
 
+const sectionTitles: Record<AccountSection, string> = {
+  personal: "Personal info",
+  password: "Account security",
+  privacy: "Privacy",
+  help: "Help & support",
+  faq: "Frequently asked questions",
+};
+
 export default function AccountDetailScreen({
   section,
 }: {
@@ -65,10 +73,11 @@ export default function AccountDetailScreen({
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
+      keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <TopHeader title="Profile" />
+      <TopHeader title={sectionTitles[section]} />
       {section === "personal" ? (
         <Panel
           icon={{
@@ -396,7 +405,15 @@ function Info({
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.surface, flex: 1 },
-  content: { gap: spacing.xl, padding: spacing.xl, paddingBottom: 40 },
+  content: {
+    alignSelf: "center",
+    gap: 24,
+    maxWidth: 760,
+    paddingBottom: 48,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    width: "100%",
+  },
   panel: {
     backgroundColor: colors.white,
     borderColor: colors.line,
@@ -501,7 +518,9 @@ const styles = StyleSheet.create({
   securityNote: {
     alignItems: "flex-start",
     backgroundColor: colors.brand50,
+    borderColor: colors.brand200,
     borderRadius: radii.md,
+    borderWidth: 1,
     flexDirection: "row",
     gap: spacing.sm,
     padding: spacing.md,

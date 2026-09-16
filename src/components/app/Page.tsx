@@ -1,5 +1,7 @@
 import { colors, spacing, typography } from "@/constants/theme";
 import TopHeader from "@/components/app/TopHeader";
+import { Images } from "@/constants/images";
+import { Image } from "expo-image";
 import type { ReactNode } from "react";
 import {
   RefreshControl,
@@ -18,6 +20,7 @@ interface PageProps {
   onRefresh?: () => void;
   headerAction?: ReactNode;
   backTitle?: string;
+  showBrand?: boolean;
 }
 
 export default function Page({
@@ -29,6 +32,7 @@ export default function Page({
   onRefresh,
   headerAction,
   backTitle,
+  showBrand = false,
 }: PageProps) {
   return (
     <ScrollView
@@ -47,6 +51,24 @@ export default function Page({
       }
     >
       {backTitle ? <TopHeader title={backTitle} /> : null}
+      {showBrand ? (
+        <View style={styles.brandBar}>
+          <View style={styles.logoBox}>
+            <Image
+              contentFit="contain"
+              source={Images.logo}
+              style={styles.logo}
+            />
+          </View>
+          <View style={styles.brandCopy}>
+            <Text style={styles.brandName}>udhari</Text>
+            <Text style={styles.brandTagline}>YOUR EVERYDAY LEDGER</Text>
+          </View>
+          <View style={styles.currencyBadge}>
+            <Text style={styles.currencyText}>₹ INR</Text>
+          </View>
+        </View>
+      ) : null}
       <View style={styles.headerRow}>
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>{eyebrow}</Text>
@@ -62,11 +84,67 @@ export default function Page({
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.surface, flex: 1 },
-  content: { gap: spacing.xl, padding: spacing.xl, paddingBottom: 40 },
+  content: {
+    alignSelf: "center",
+    gap: 24,
+    maxWidth: 760,
+    paddingBottom: 48,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    width: "100%",
+  },
+  brandBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    minHeight: 48,
+  },
+  logoBox: {
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 46,
+    justifyContent: "center",
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    width: 46,
+  },
+  logo: { height: 38, width: 38 },
+  brandCopy: { flex: 1, marginLeft: spacing.md },
+  brandName: {
+    color: colors.ink,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 20,
+    letterSpacing: -0.8,
+  },
+  brandTagline: {
+    color: colors.slate400,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 8,
+    letterSpacing: 1.25,
+    marginTop: 1,
+  },
+  currencyBadge: {
+    alignItems: "center",
+    backgroundColor: colors.brand50,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  currencyText: {
+    color: colors.brand700,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 9,
+    letterSpacing: 0.4,
+  },
   headerRow: {
     alignItems: "flex-start",
     flexDirection: "row",
     gap: spacing.md,
+    paddingHorizontal: 2,
   },
   headerCopy: { flex: 1 },
   eyebrow: {
@@ -78,8 +156,9 @@ const styles = StyleSheet.create({
   title: {
     color: colors.ink,
     fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 28,
-    letterSpacing: -1,
+    fontSize: 30,
+    letterSpacing: -1.2,
+    lineHeight: 36,
     marginTop: spacing.xs,
   },
   subtitle: {

@@ -33,7 +33,7 @@ export default function AuthScaffold({
 }: AuthScaffoldProps) {
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : 'height'}
       style={styles.screen}
     >
       <StatusBar style="light" />

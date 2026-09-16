@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/Button";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { logout } from "@/lib/api/auth";
+import { unregisterCurrentPushDevice } from "@/lib/api/push-notifications";
 import { getApiError } from "@/lib/api/errors";
 import { getCurrentUserSubscription } from "@/lib/api/subscriptions";
 import { useAuthStore } from "@/stores/authStore";
@@ -29,7 +30,10 @@ export function SubscriptionGuard({ children }: { children: ReactNode }) {
     refetchOnMount: "always",
   });
   const logoutMutation = useMutation({
-    mutationFn: logout,
+    mutationFn: async () => {
+      await unregisterCurrentPushDevice().catch(() => undefined);
+      return logout();
+    },
     onSuccess: () => {
       clearSession();
       queryClient.clear();

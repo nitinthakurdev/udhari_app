@@ -2,9 +2,10 @@ import { colors, radii, spacing, typography } from "@/constants/theme";
 import { createRealtimeSocket } from "@/lib/socket";
 import { useAuthStore } from "@/stores/authStore";
 import type { RealtimeNotification } from "@/types/notifications";
+import { getNotificationHref } from "@/lib/notificationNavigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -54,12 +55,8 @@ export function RealtimeNotifications() {
   if (!notification) return null;
 
   const openNotification = () => {
-    const rolePath = role === "business" ? "(business)" : "(user)";
-    const tab = notification.type.startsWith("transition.")
-      ? "transitions"
-      : "requests";
     setNotification(null);
-    router.push(`/(app)/${rolePath}/(tabs)/${tab}` as Href);
+    router.push(getNotificationHref(notification.type, role));
   };
 
   return (

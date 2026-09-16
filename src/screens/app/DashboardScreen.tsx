@@ -94,6 +94,7 @@ export default function DashboardScreen() {
       headerAction={businessMode ? <BusinessPicker /> : undefined}
       refreshing={refreshing}
       onRefresh={refresh}
+      showBrand
     >
       {businessMode ? (
         <BusinessDashboard
@@ -722,6 +723,7 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     borderRadius: radii.lg,
     borderWidth: 1,
+    elevation: 2,
     flex: 1,
     minWidth: 0,
     padding: spacing.lg,
@@ -805,8 +807,13 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     borderRadius: radii.lg,
     borderWidth: 1,
+    elevation: 1,
     overflow: "hidden",
     paddingHorizontal: spacing.lg,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
   },
   recordRowPressed: { backgroundColor: colors.brand50 },
   recordRow: {
@@ -847,8 +854,13 @@ const styles = StyleSheet.create({
   businessPanel: {
     backgroundColor: colors.ink,
     borderRadius: radii.lg,
+    elevation: 4,
     overflow: "hidden",
     padding: spacing.xl,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
   },
   businessPanelTop: {
     alignItems: "center",
@@ -891,8 +903,13 @@ const styles = StyleSheet.create({
   heroCard: {
     backgroundColor: colors.brand700,
     borderRadius: 22,
+    elevation: 5,
     overflow: "hidden",
     padding: spacing.xl,
+    shadowColor: colors.brand700,
+    shadowOffset: { width: 0, height: 9 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
   },
   heroGlowLarge: {
     backgroundColor: "rgba(255,255,255,0.07)",

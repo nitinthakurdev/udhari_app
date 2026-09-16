@@ -366,7 +366,12 @@ const styles = StyleSheet.create({
   currentCard: {
     backgroundColor: colors.ink,
     borderRadius: 22,
+    elevation: 4,
     padding: spacing.xl,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
   },
   currentHeading: {
     alignItems: "center",
@@ -423,7 +428,12 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     borderRadius: 20,
     borderWidth: 1,
+    elevation: 1,
     padding: spacing.xl,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
   },
   currentPlanCard: { borderColor: colors.brand400, borderWidth: 2 },
   planHeading: {

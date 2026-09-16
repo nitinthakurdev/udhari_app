@@ -2,6 +2,7 @@ import Page from "@/components/app/Page";
 import { Button } from "@/components/ui/Button";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { logout } from "@/lib/api/auth";
+import { unregisterCurrentPushDevice } from "@/lib/api/push-notifications";
 import { useAuthStore } from "@/stores/authStore";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
@@ -59,7 +60,10 @@ export default function ProfileScreen() {
   const clearSession = useAuthStore((state) => state.clearSession);
   const isBusiness = user?.user_role?.slug === "business";
   const logoutMutation = useMutation({
-    mutationFn: logout,
+    mutationFn: async () => {
+      await unregisterCurrentPushDevice().catch(() => undefined);
+      return logout();
+    },
     onSettled: () => {
       queryClient.clear();
       clearSession();
@@ -71,6 +75,7 @@ export default function ProfileScreen() {
   const initials = user
     ? `${user.first_name[0] ?? ""}${user.last_name?.[0] ?? ""}`.toUpperCase()
     : "U";
+  const emailVerified = Boolean(user?.is_email_verified);
 
   const openAccountPage = (path: string) => {
     const rolePath = isBusiness ? "(business)" : "(user)";
@@ -92,28 +97,42 @@ export default function ProfileScreen() {
         <View style={styles.grow}>
           <Text style={styles.name}>{fullName}</Text>
           <Text style={styles.username}>@{user?.username}</Text>
-          <View style={styles.roleBadge}>
-            <View style={styles.onlineDot} />
-            <Text style={styles.role}>{user?.user_role?.name ?? "User"}</Text>
+          <View style={styles.heroBadges}>
+            <View style={styles.roleBadge}>
+              <View style={styles.roleDot} />
+              <Text style={styles.role}>{user?.user_role?.name ?? "User"}</Text>
+            </View>
+            <View style={styles.verificationBadge}>
+              <SymbolView
+                name={
+                  emailVerified
+                    ? {
+                        ios: "checkmark.seal.fill",
+                        android: "verified",
+                        web: "verified",
+                      }
+                    : { ios: "envelope", android: "mail", web: "mail" }
+                }
+                size={11}
+                tintColor={emailVerified ? "#86efac" : colors.brand100}
+              />
+              <Text style={styles.verificationText}>
+                {emailVerified ? "Email verified" : "Email pending"}
+              </Text>
+            </View>
           </View>
-        </View>
-        <View style={styles.secureBadge}>
-          <SymbolView
-            name={{
-              ios: "checkmark.shield.fill",
-              android: "verified_user",
-              web: "verified_user",
-            }}
-            size={20}
-            tintColor={colors.white}
-          />
         </View>
       </View>
 
       <View style={styles.accountMenu}>
         <View style={styles.menuHeading}>
-          <Text style={styles.menuTitle}>Account settings</Text>
-          <Text style={styles.menuSubtitle}>Choose what you want to manage</Text>
+          <View style={styles.grow}>
+            <Text style={styles.menuTitle}>Account settings</Text>
+            <Text style={styles.menuSubtitle}>Choose what you want to manage</Text>
+          </View>
+          <View style={styles.itemCount}>
+            <Text style={styles.itemCountText}>{accountItems.length}</Text>
+          </View>
         </View>
         {accountItems.map((item) => (
           <Pressable
@@ -122,10 +141,16 @@ export default function ProfileScreen() {
             onPress={() => openAccountPage(item.path)}
             style={({ pressed }) => [
               styles.menuCard,
+              item.path === "upgrade" && styles.upgradeCard,
               pressed && styles.menuCardPressed,
             ]}
           >
-            <View style={styles.menuIcon}>
+            <View
+              style={[
+                styles.menuIcon,
+                item.path === "upgrade" && styles.upgradeIcon,
+              ]}
+            >
               <SymbolView
                 name={item.icon}
                 size={20}
@@ -241,11 +266,16 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     flexDirection: "row",
     gap: 6,
-    marginTop: spacing.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: 5,
   },
-  onlineDot: {
+  heroBadges: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: spacing.sm,
+  },
+  roleDot: {
     backgroundColor: "#86efac",
     borderRadius: radii.full,
     height: 6,
@@ -257,13 +287,19 @@ const styles = StyleSheet.create({
     fontSize: 9,
     textTransform: "uppercase",
   },
-  secureBadge: {
+  verificationBadge: {
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,.14)",
     borderRadius: radii.full,
-    height: 40,
-    justifyContent: "center",
-    width: 40,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  verificationText: {
+    color: colors.white,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 9,
   },
   accountMenu: {
     backgroundColor: colors.white,
@@ -279,6 +315,8 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
   },
   menuHeading: {
+    alignItems: "center",
+    flexDirection: "row",
     paddingBottom: spacing.md,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
@@ -294,6 +332,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 3,
   },
+  itemCount: {
+    alignItems: "center",
+    backgroundColor: colors.brand50,
+    borderRadius: radii.full,
+    height: 28,
+    justifyContent: "center",
+    width: 28,
+  },
+  itemCountText: {
+    color: colors.brand700,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 10,
+  },
   menuCard: {
     alignItems: "center",
     borderRadius: radii.md,
@@ -303,6 +354,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   menuCardPressed: { backgroundColor: colors.brand50 },
+  upgradeCard: {
+    backgroundColor: colors.brand50,
+    borderColor: colors.brand200,
+    borderWidth: 1,
+  },
   menuIcon: {
     alignItems: "center",
     backgroundColor: colors.brand50,
@@ -311,6 +367,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 44,
   },
+  upgradeIcon: { backgroundColor: colors.white },
   menuItemTitle: {
     color: colors.ink,
     fontFamily: typography.fontFamilyBold,
@@ -325,8 +382,8 @@ const styles = StyleSheet.create({
   },
   logoutPanel: {
     alignItems: "center",
-    backgroundColor: colors.white,
-    borderColor: colors.line,
+    backgroundColor: colors.danger50,
+    borderColor: "#fecaca",
     borderRadius: radii.lg,
     borderWidth: 1,
     flexDirection: "row",

@@ -49,7 +49,7 @@ const tabs: readonly TabDefinition[] = [
     ios: "slider.horizontal.3",
     iosSelected: "slider.horizontal.3",
     name: "configuration",
-    title: "Configuration",
+    title: "Settings",
   },
   {
     android: "account_circle",
@@ -96,11 +96,20 @@ function screenOptions(): ComponentProps<typeof Tabs>["screenOptions"] {
     tabBarLabelStyle: {
       fontFamily: typography.fontFamilySemiBold,
       fontSize: 10,
+      marginTop: 2,
     },
     tabBarStyle: {
       backgroundColor: colors.white,
       borderTopColor: colors.line,
       borderTopWidth: 1,
+      elevation: 12,
+      height: 66,
+      paddingBottom: 7,
+      paddingTop: 7,
+      shadowColor: colors.ink,
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 12,
     },
   };
 }
@@ -145,7 +154,7 @@ export function AppTabs() {
   return (
     // RootNavigator already applies the device bottom inset around this navigator.
     <Tabs
-      safeAreaInsets={{ bottom: 0 }}
+      safeAreaInsets={{ bottom: 10 }}
       screenOptions={screenOptions()}
     >
       {tabs.map((tab) => (

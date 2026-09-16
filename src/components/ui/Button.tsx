@@ -146,6 +146,11 @@ export function Button({
               : isDisabled
                 ? 0.6
                 : 1,
+          elevation: !isDisabled && variant === "primary" ? 2 : 0,
+          shadowColor: variant === "primary" ? colors.brand700 : "transparent",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: !isDisabled && variant === "primary" ? 0.16 : 0,
+          shadowRadius: 8,
         },
         style,
       ]}
@@ -190,10 +195,11 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: radii.md,
+    borderRadius: radii.md + 2,
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "flex-start",
+    minHeight: 40,
   },
   content: {
     flexDirection: "row",

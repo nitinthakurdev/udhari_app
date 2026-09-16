@@ -13,6 +13,7 @@
     },
     "android": {
       "icon": "./assets/android/playstore-icon.png",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#FAFAFA",
         "foregroundImage": "./assets/android/mipmap-xxxhdpi/ic_launcher_foreground.png"
@@ -37,7 +38,15 @@
       ],
       "expo-secure-store",
       "expo-image",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#155EEF",
+          "defaultChannel": "udhari-updates"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

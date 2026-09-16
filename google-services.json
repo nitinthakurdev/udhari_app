@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "915834326275",
+    "project_id": "udhari-app-notification",
+    "storage_bucket": "udhari-app-notification.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:915834326275:android:84e53e7da2544c3c67ed36",
+        "android_client_info": {
+          "package_name": "com.udhari.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDA2cDl9lgbS7WddGYifH1zpv6pSX2t7kg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
