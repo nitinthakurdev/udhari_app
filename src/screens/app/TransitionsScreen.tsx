@@ -1,7 +1,7 @@
-import BusinessPicker from "@/components/app/BusinessPicker";
 import Page from "@/components/app/Page";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { Button } from "@/components/ui/Button";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import {
@@ -45,11 +45,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -730,7 +726,6 @@ export default function TransitionsScreen() {
             ? "Manage entries for customers connected to the selected business."
             : "Manage entries shared with your connected businesses."
       }
-      headerAction={businessMode ? <BusinessPicker /> : undefined}
       refreshing={refreshing}
       onRefresh={refresh}
     >
@@ -1208,21 +1203,12 @@ function TransitionFormModal({
     Boolean(editing?.recurring_config_id && editing.unit_id === null);
 
   return (
-    <Modal
+    <BottomSheet
       visible={open}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      onClose={onClose}
+      contentContainerStyle={styles.modalContent}
+      sheetStyle={styles.modalCard}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.modalBackdrop}
-      >
-        <View style={styles.modalCard}>
-          <ScrollView
-            contentContainerStyle={styles.modalContent}
-            keyboardShouldPersistTaps="handled"
-          >
             <View style={styles.modalHeader}>
               <View style={styles.grow}>
                 <Text style={styles.modalTitle}>
@@ -1370,10 +1356,7 @@ function TransitionFormModal({
               loading={saving}
               onPress={onSubmit}
             />
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -2051,18 +2034,10 @@ const styles = StyleSheet.create({
   paymentStatusPaid: { backgroundColor: "#ecfdf3", color: "#047857" },
   approvalTextDone: { color: "#047857" },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  modalBackdrop: {
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
   modalCard: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
     maxHeight: "92%",
   },
-  modalContent: { gap: spacing.lg, padding: spacing.xl, paddingBottom: 36 },
+  modalContent: { gap: spacing.lg },
   modalHeader: {
     alignItems: "flex-start",
     flexDirection: "row",

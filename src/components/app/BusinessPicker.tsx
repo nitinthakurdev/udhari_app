@@ -4,7 +4,8 @@ import { colors, radii, spacing, typography } from "@/constants/theme";
 import { useQuery } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
 import { useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 
 export default function BusinessPicker() {
   const [open, setOpen] = useState(false);
@@ -20,7 +21,12 @@ export default function BusinessPicker() {
 
   return (
     <>
-      <Pressable style={styles.trigger} onPress={() => setOpen(true)}>
+      <Pressable
+        accessibilityLabel={`Switch business. Current business: ${activeBusiness?.name ?? "none"}`}
+        accessibilityRole="button"
+        style={styles.trigger}
+        onPress={() => setOpen(true)}
+      >
         <SymbolView
           name={{ ios: "building.2", android: "business", web: "business" }}
           size={17}
@@ -32,53 +38,46 @@ export default function BusinessPicker() {
         <Text style={styles.chevron}>⌄</Text>
       </Pressable>
 
-      <Modal
+      <BottomSheet
         visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
+        onClose={() => setOpen(false)}
+        contentContainerStyle={styles.sheetContent}
+        initialSnapIndex={0}
       >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable
-            style={styles.sheet}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <Text style={styles.title}>Select business</Text>
-            <View style={styles.list}>
-              {businesses.map((business) => {
-                const selected = business.uuid === activeBusiness?.uuid;
+        <Text style={styles.title}>Switch business</Text>
+        <View style={styles.list}>
+          {businesses.map((business) => {
+            const selected = business.uuid === activeBusiness?.uuid;
 
-                return (
-                  <Pressable
-                    key={business.uuid}
-                    style={[styles.option, selected && styles.optionSelected]}
-                    onPress={() => {
-                      setActiveBusiness(business);
-                      setOpen(false);
+            return (
+              <Pressable
+                key={business.uuid}
+                style={[styles.option, selected && styles.optionSelected]}
+                onPress={() => {
+                  setActiveBusiness(business);
+                  setOpen(false);
+                }}
+              >
+                <View style={styles.optionIcon}>
+                  <SymbolView
+                    name={{
+                      ios: "storefront",
+                      android: "storefront",
+                      web: "storefront",
                     }}
-                  >
-                    <View style={styles.optionIcon}>
-                      <SymbolView
-                        name={{
-                          ios: "storefront",
-                          android: "storefront",
-                          web: "storefront",
-                        }}
-                        size={18}
-                        tintColor={colors.brand600}
-                      />
-                    </View>
-                    <Text numberOfLines={1} style={styles.optionName}>
-                      {business.name}
-                    </Text>
-                    {selected ? <Text style={styles.check}>✓</Text> : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+                    size={18}
+                    tintColor={colors.brand600}
+                  />
+                </View>
+                <Text numberOfLines={1} style={styles.optionName}>
+                  {business.name}
+                </Text>
+                {selected ? <Text style={styles.check}>✓</Text> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      </BottomSheet>
     </>
   );
 }
@@ -104,24 +103,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   chevron: { color: colors.slate500, fontSize: 14 },
-  backdrop: {
-    backgroundColor: "rgba(15,23,42,.4)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "70%",
-    padding: spacing.xl,
-  },
+  sheetContent: { gap: spacing.lg },
   title: {
     color: colors.ink,
     fontFamily: typography.fontFamilyExtraBold,
     fontSize: 18,
   },
-  list: { gap: spacing.sm, marginTop: spacing.lg },
+  list: { gap: spacing.sm },
   option: {
     alignItems: "center",
     borderColor: colors.line,

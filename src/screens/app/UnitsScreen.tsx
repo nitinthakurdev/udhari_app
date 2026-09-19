@@ -1,6 +1,7 @@
 import Page from "@/components/app/Page";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { Button } from "@/components/ui/Button";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { createUnit, deleteUnit, getUnits, updateUnit } from "@/lib/api/units";
@@ -9,7 +10,7 @@ import type { Unit } from "@/types/models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
 import { useState } from "react";
-import { Alert, Modal, StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Text, View } from "react-native";
 
 interface UnitForm {
   name: string;
@@ -146,26 +147,21 @@ export default function UnitsScreen() {
         </View>
       )}
 
-      <Modal
+      <BottomSheet
         visible={editing !== undefined}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditing(undefined)}
+        onClose={() => setEditing(undefined)}
+        contentContainerStyle={styles.dialog}
       >
-        <View style={styles.overlay}>
-          <View style={styles.dialog}>
-            <Text style={styles.dialogTitle}>{editing ? "Edit unit" : "Add unit"}</Text>
-            <Input label="Unit name" value={form.name} onChangeText={(name) => setForm((current) => ({ ...current, name }))} placeholder="Kilogram" autoFocus maxLength={50} />
-            <Input label="Code" value={form.code} onChangeText={(code) => setForm((current) => ({ ...current, code }))} placeholder="kg" autoCapitalize="none" maxLength={20} />
-            <Input label="Type" value={form.type} onChangeText={(type) => setForm((current) => ({ ...current, type }))} placeholder="weight" autoCapitalize="none" maxLength={30} />
-            <Input label="Conversion factor" value={form.factor} onChangeText={(factor) => setForm((current) => ({ ...current, factor }))} placeholder="1" keyboardType="decimal-pad" />
-            <View style={styles.dialogActions}>
-              <Button label="Cancel" variant="ghost" onPress={() => setEditing(undefined)} />
-              <Button label="Save" loading={saveMutation.isPending} onPress={submit} />
-            </View>
-          </View>
+        <Text style={styles.dialogTitle}>{editing ? "Edit unit" : "Add unit"}</Text>
+        <Input label="Unit name" value={form.name} onChangeText={(name) => setForm((current) => ({ ...current, name }))} placeholder="Kilogram" autoFocus maxLength={50} />
+        <Input label="Code" value={form.code} onChangeText={(code) => setForm((current) => ({ ...current, code }))} placeholder="kg" autoCapitalize="none" maxLength={20} />
+        <Input label="Type" value={form.type} onChangeText={(type) => setForm((current) => ({ ...current, type }))} placeholder="weight" autoCapitalize="none" maxLength={30} />
+        <Input label="Conversion factor" value={form.factor} onChangeText={(factor) => setForm((current) => ({ ...current, factor }))} placeholder="1" keyboardType="decimal-pad" />
+        <View style={styles.dialogActions}>
+          <Button label="Cancel" variant="ghost" onPress={() => setEditing(undefined)} />
+          <Button label="Save" loading={saveMutation.isPending} onPress={submit} />
         </View>
-      </Modal>
+      </BottomSheet>
     </Page>
   );
 }
@@ -196,20 +192,8 @@ const styles = StyleSheet.create({
   unitMeta: { color: colors.brand600, fontFamily: typography.fontFamilyBold, fontSize: 10, marginTop: 2 },
   scope: { color: colors.slate500, fontFamily: typography.fontFamilyRegular, fontSize: 10, marginTop: 2 },
   actions: { flexDirection: "row", gap: spacing.xs },
-  overlay: {
-    alignItems: "center",
-    backgroundColor: "rgba(15,23,42,.45)",
-    flex: 1,
-    justifyContent: "center",
-    padding: spacing.xl,
-  },
   dialog: {
-    backgroundColor: colors.white,
-    borderRadius: radii.lg,
     gap: spacing.lg,
-    maxWidth: 440,
-    padding: spacing.xl,
-    width: "100%",
   },
   dialogTitle: { color: colors.ink, fontFamily: typography.fontFamilyExtraBold, fontSize: 20 },
   dialogActions: { flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end" },

@@ -1,6 +1,7 @@
 import Page from "@/components/app/Page";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { Button } from "@/components/ui/Button";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { getApiError } from "@/lib/api/errors";
@@ -16,7 +17,7 @@ import type { RecurringConfig, Transition } from "@/types/models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
 import { useEffect, useState } from "react";
-import { Alert, Modal, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Text, View } from "react-native";
 
 interface ScheduledOccurrence {
   config: RecurringConfig;
@@ -358,69 +359,57 @@ export default function ScheduledTransitionsScreen() {
         </View>
       )}
 
-      <Modal
+      <BottomSheet
         visible={Boolean(editing)}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setEditing(null)}
+        onClose={() => setEditing(null)}
+        contentContainerStyle={styles.form}
       >
-        <View style={styles.overlay}>
-          <View style={styles.dialog}>
-            <ScrollView
-              contentContainerStyle={styles.form}
-              keyboardShouldPersistTaps="handled"
-            >
-              <Text style={styles.dialogTitle}>Edit scheduled transition</Text>
-              <Input
-                label={
-                  editing?.config.type === "service" ? "Service" : "Product"
-                }
-                value={editForm.name}
-                onChangeText={(name) =>
-                  setEditForm((value) => ({ ...value, name }))
-                }
-              />
-              {editing?.config.type === "product" ? (
-                <Input
-                  label="Quantity"
-                  value={editForm.quantity}
-                  keyboardType="decimal-pad"
-                  onChangeText={(quantity) =>
-                    setEditForm((value) => ({ ...value, quantity }))
-                  }
-                />
-              ) : null}
-              <Input
-                label="Price"
-                value={editForm.unitPrice}
-                keyboardType="decimal-pad"
-                onChangeText={(unitPrice) =>
-                  setEditForm((value) => ({ ...value, unitPrice }))
-                }
-              />
-              <Input
-                label="Comment"
-                value={editForm.comment}
-                onChangeText={(comment) =>
-                  setEditForm((value) => ({ ...value, comment }))
-                }
-              />
-              <View style={styles.actions}>
-                <Button
-                  label="Cancel"
-                  variant="ghost"
-                  onPress={() => setEditing(null)}
-                />
-                <Button
-                  label="Send for approval"
-                  loading={actionMutation.isPending}
-                  onPress={submitEdit}
-                />
-              </View>
-            </ScrollView>
-          </View>
+        <Text style={styles.dialogTitle}>Edit scheduled transition</Text>
+        <Input
+          label={editing?.config.type === "service" ? "Service" : "Product"}
+          value={editForm.name}
+          onChangeText={(name) =>
+            setEditForm((value) => ({ ...value, name }))
+          }
+        />
+        {editing?.config.type === "product" ? (
+          <Input
+            label="Quantity"
+            value={editForm.quantity}
+            keyboardType="decimal-pad"
+            onChangeText={(quantity) =>
+              setEditForm((value) => ({ ...value, quantity }))
+            }
+          />
+        ) : null}
+        <Input
+          label="Price"
+          value={editForm.unitPrice}
+          keyboardType="decimal-pad"
+          onChangeText={(unitPrice) =>
+            setEditForm((value) => ({ ...value, unitPrice }))
+          }
+        />
+        <Input
+          label="Comment"
+          value={editForm.comment}
+          onChangeText={(comment) =>
+            setEditForm((value) => ({ ...value, comment }))
+          }
+        />
+        <View style={styles.actions}>
+          <Button
+            label="Cancel"
+            variant="ghost"
+            onPress={() => setEditing(null)}
+          />
+          <Button
+            label="Send for approval"
+            loading={actionMutation.isPending}
+            onPress={submitEdit}
+          />
         </View>
-      </Modal>
+      </BottomSheet>
     </Page>
   );
 }
@@ -480,18 +469,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     justifyContent: "flex-end",
   },
-  overlay: {
-    backgroundColor: "rgba(15,23,42,.55)",
-    flex: 1,
-    justifyContent: "center",
-    padding: spacing.lg,
-  },
-  dialog: {
-    backgroundColor: colors.white,
-    borderRadius: radii.lg,
-    maxHeight: "90%",
-  },
-  form: { gap: spacing.md, padding: spacing.xl },
+  form: { gap: spacing.md },
   dialogTitle: {
     color: colors.ink,
     fontFamily: typography.fontFamilyExtraBold,

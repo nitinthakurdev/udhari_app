@@ -2,6 +2,7 @@ import Page from "@/components/app/Page";
 import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { Button } from "@/components/ui/Button";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { getCurrentUser } from "@/lib/api/auth";
@@ -28,8 +29,6 @@ import {
 import { useState } from "react";
 import {
   Alert,
-  Modal,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -290,34 +289,29 @@ export default function BusinessesScreen() {
         </View>
       )}
 
-      <Modal
+      <BottomSheet
         visible={formBusiness !== undefined}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setFormBusiness(undefined)}
+        onClose={() => setFormBusiness(undefined)}
+        contentContainerStyle={styles.modalContent}
+        sheetStyle={styles.modal}
       >
-        <ScrollView
-          style={styles.modal}
-          contentContainerStyle={styles.modalContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.modalHeader}>
-            <View style={styles.grow}>
-              <Text style={styles.modalEyebrow}>
-                {formBusiness ? "UPDATE" : "CREATE"}
-              </Text>
-              <Text style={styles.modalTitle}>
-                {formBusiness ? "Edit business" : "Add business"}
-              </Text>
-            </View>
-            <Button
-              label="Close"
-              variant="ghost"
-              size="sm"
-              onPress={() => setFormBusiness(undefined)}
-            />
+        <View style={styles.modalHeader}>
+          <View style={styles.grow}>
+            <Text style={styles.modalEyebrow}>
+              {formBusiness ? "UPDATE" : "CREATE"}
+            </Text>
+            <Text style={styles.modalTitle}>
+              {formBusiness ? "Edit business" : "Add business"}
+            </Text>
           </View>
-          <View style={styles.form}>
+          <Button
+            label="Close"
+            variant="ghost"
+            size="sm"
+            onPress={() => setFormBusiness(undefined)}
+          />
+        </View>
+        <View style={styles.form}>
             <BusinessField
               control={form.control}
               name="name"
@@ -400,9 +394,8 @@ export default function BusinessesScreen() {
               loading={saveMutation.isPending}
               onPress={() => void submit()}
             />
-          </View>
-        </ScrollView>
-      </Modal>
+        </View>
+      </BottomSheet>
     </Page>
   );
 }
@@ -506,8 +499,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingTop: spacing.md,
   },
-  modal: { backgroundColor: colors.surface, flex: 1 },
-  modalContent: { padding: spacing.xl, paddingBottom: 48 },
+  modal: { backgroundColor: colors.surface },
+  modalContent: { gap: spacing.xl },
   modalHeader: {
     alignItems: "center",
     flexDirection: "row",

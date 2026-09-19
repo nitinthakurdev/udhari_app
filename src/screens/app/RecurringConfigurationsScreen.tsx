@@ -1,6 +1,7 @@
 import Page from "@/components/app/Page";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { Button } from "@/components/ui/Button";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/SelectTag";
 import { colors, radii, spacing, typography } from "@/constants/theme";
@@ -30,9 +31,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   Alert,
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -333,18 +332,11 @@ export default function RecurringConfigurationsScreen() {
           ))}
         </View>
       )}
-      <Modal
+      <BottomSheet
         visible={formOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setFormOpen(false)}
+        onClose={() => setFormOpen(false)}
+        contentContainerStyle={styles.form}
       >
-        <View style={styles.overlay}>
-          <View style={styles.dialog}>
-            <ScrollView
-              contentContainerStyle={styles.form}
-              keyboardShouldPersistTaps="handled"
-            >
               <Text style={styles.dialogTitle}>
                 {editing ? "Edit" : "Add"} configuration
               </Text>
@@ -558,10 +550,7 @@ export default function RecurringConfigurationsScreen() {
                   onPress={submit}
                 />
               </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      </BottomSheet>
     </Page>
   );
 }
@@ -610,19 +599,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     justifyContent: "flex-end",
   },
-  overlay: {
-    backgroundColor: "rgba(15,23,42,.55)",
-    flex: 1,
-    justifyContent: "center",
-    padding: spacing.lg,
-  },
-  dialog: {
-    backgroundColor: colors.white,
-    borderRadius: radii.lg,
-    maxHeight: "90%",
-    overflow: "hidden",
-  },
-  form: { gap: spacing.md, padding: spacing.xl },
+  form: { gap: spacing.md },
   dialogTitle: {
     color: colors.ink,
     fontFamily: typography.fontFamilyExtraBold,

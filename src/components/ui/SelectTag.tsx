@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { colors, spacing, radii, typography } from "@/constants/theme";
 import {
   SelectOption,
@@ -135,65 +135,62 @@ export function Select<T extends string = string>({
         <Text style={styles.helperText}>{helperText}</Text>
       ) : null}
 
-      <Modal
+      <BottomSheet
         visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={closeModal}
+        onClose={closeModal}
+        initialSnapIndex={0}
+        scrollable={false}
+        sheetStyle={styles.sheet}
       >
-        <Pressable style={styles.backdrop} onPress={closeModal}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            {label ? <Text style={styles.sheetTitle}>{label}</Text> : null}
+        {label ? <Text style={styles.sheetTitle}>{label}</Text> : null}
 
-            {searchable ? (
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search..."
-                placeholderTextColor={colors.slate400}
-                style={styles.searchInput}
-                autoFocus
-              />
-            ) : null}
+        {searchable ? (
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search..."
+            placeholderTextColor={colors.slate400}
+            style={styles.searchInput}
+            autoFocus
+          />
+        ) : null}
 
-            <FlatList
-              data={filteredOptions}
-              keyExtractor={(item) => item.value}
-              style={styles.list}
-              keyboardShouldPersistTaps="handled"
-              ItemSeparatorComponent={() => <View style={styles.separator} />}
-              ListEmptyComponent={
-                <Text style={styles.emptyText}>No options found</Text>
-              }
-              renderItem={({ item }) => {
-                const isSelected = item.value === value;
-                return (
-                  <Pressable
-                    onPress={() => handleSelect(item)}
-                    disabled={item.disabled}
-                    style={[styles.option, item.disabled && { opacity: 0.5 }]}
-                  >
-                    <Text
-                      style={[
-                        styles.optionText,
-                        isSelected && {
-                          color: colors.brand600,
-                          fontFamily: typography.fontFamilySemiBold,
-                        },
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                    {isSelected ? (
-                      <Text style={styles.optionCheck}>✓</Text>
-                    ) : null}
-                  </Pressable>
-                );
-              }}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
+        <FlatList
+          data={filteredOptions}
+          keyExtractor={(item) => item.value}
+          style={styles.list}
+          keyboardShouldPersistTaps="handled"
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>No options found</Text>
+          }
+          renderItem={({ item }) => {
+            const isSelected = item.value === value;
+            return (
+              <Pressable
+                onPress={() => handleSelect(item)}
+                disabled={item.disabled}
+                style={[styles.option, item.disabled && { opacity: 0.5 }]}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    isSelected && {
+                      color: colors.brand600,
+                      fontFamily: typography.fontFamilySemiBold,
+                    },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+                {isSelected ? (
+                  <Text style={styles.optionCheck}>✓</Text>
+                ) : null}
+              </Pressable>
+            );
+          }}
+        />
+      </BottomSheet>
     </View>
   );
 }
@@ -236,18 +233,7 @@ const styles = StyleSheet.create({
     color: colors.danger600,
     marginTop: spacing.xs,
   },
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(17, 19, 24, 0.4)",
-    justifyContent: "flex-end",
-  },
   sheet: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: radii.lg,
-    borderTopRightRadius: radii.lg,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
     maxHeight: "70%",
   },
   sheetTitle: {
@@ -269,6 +255,7 @@ const styles = StyleSheet.create({
   },
   list: {
     flexGrow: 0,
+    flexShrink: 1,
   },
   option: {
     flexDirection: "row",

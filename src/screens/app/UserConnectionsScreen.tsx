@@ -1,6 +1,7 @@
 import Page from "@/components/app/Page";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { Button } from "@/components/ui/Button";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import {
@@ -14,7 +15,7 @@ import { useAuthStore } from "@/stores/authStore";
 import type { BusinessConnection } from "@/types/models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Alert, Modal, StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Text, View } from "react-native";
 
 export default function UserConnectionsScreen() {
   const queryClient = useQueryClient();
@@ -131,55 +132,50 @@ export default function UserConnectionsScreen() {
           })}
         </View>
       )}
-      <Modal
+      <BottomSheet
         visible={searchOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSearchOpen(false)}
+        onClose={() => setSearchOpen(false)}
+        contentContainerStyle={styles.dialog}
       >
-        <View style={styles.overlay}>
-          <View style={styles.dialog}>
-            <Text style={styles.title}>Connect a user</Text>
-            <Input
-              label="Search"
-              value={input}
-              onChangeText={setInput}
-              placeholder="Name, username, email, or phone"
-              autoCapitalize="none"
-            />
-            {searchQuery.isFetching ? (
-              <LoadingState label="Searching…" />
-            ) : null}
-            <View style={styles.results}>
-              {(searchQuery.data?.data ?? []).map((user) => (
-                <View style={styles.result} key={user.uuid}>
-                  <View style={styles.grow}>
-                    <Text style={styles.name}>
-                      {user.first_name} {user.last_name ?? ""}
-                    </Text>
-                    <Text style={styles.username}>@{user.username}</Text>
-                  </View>
-                  <Button
-                    label="Connect"
-                    size="sm"
-                    loading={
-                      connectMutation.isPending &&
-                      connectMutation.variables === user.user_id
-                    }
-                    disabled={connectMutation.isPending}
-                    onPress={() => connectMutation.mutate(user.user_id)}
-                  />
-                </View>
-              ))}
+        <Text style={styles.title}>Connect a user</Text>
+        <Input
+          label="Search"
+          value={input}
+          onChangeText={setInput}
+          placeholder="Name, username, email, or phone"
+          autoCapitalize="none"
+        />
+        {searchQuery.isFetching ? (
+          <LoadingState label="Searching…" />
+        ) : null}
+        <View style={styles.results}>
+          {(searchQuery.data?.data ?? []).map((user) => (
+            <View style={styles.result} key={user.uuid}>
+              <View style={styles.grow}>
+                <Text style={styles.name}>
+                  {user.first_name} {user.last_name ?? ""}
+                </Text>
+                <Text style={styles.username}>@{user.username}</Text>
+              </View>
+              <Button
+                label="Connect"
+                size="sm"
+                loading={
+                  connectMutation.isPending &&
+                  connectMutation.variables === user.user_id
+                }
+                disabled={connectMutation.isPending}
+                onPress={() => connectMutation.mutate(user.user_id)}
+              />
             </View>
-            <Button
-              label="Close"
-              variant="ghost"
-              onPress={() => setSearchOpen(false)}
-            />
-          </View>
+          ))}
         </View>
-      </Modal>
+        <Button
+          label="Close"
+          variant="ghost"
+          onPress={() => setSearchOpen(false)}
+        />
+      </BottomSheet>
     </Page>
   );
 }
@@ -214,18 +210,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 5,
   },
-  overlay: {
-    backgroundColor: "rgba(15,23,42,.55)",
-    flex: 1,
-    justifyContent: "center",
-    padding: spacing.xl,
-  },
   dialog: {
-    backgroundColor: colors.white,
-    borderRadius: radii.lg,
     gap: spacing.md,
-    maxHeight: "85%",
-    padding: spacing.xl,
   },
   title: {
     color: colors.ink,

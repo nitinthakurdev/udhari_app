@@ -1,4 +1,3 @@
-import BusinessPicker from "@/components/app/BusinessPicker";
 import Page from "@/components/app/Page";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { colors, radii, spacing, typography } from "@/constants/theme";
@@ -106,7 +105,6 @@ export default function DashboardScreen() {
           ? "Your Udhari workspace at a glance."
           : "Your balances and latest records at a glance."
       }
-      headerAction={businessMode ? <BusinessPicker /> : undefined}
       refreshing={refreshing}
       onRefresh={refresh}
       showBrand

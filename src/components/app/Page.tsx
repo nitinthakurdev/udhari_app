@@ -1,6 +1,8 @@
 import { colors, spacing, typography } from "@/constants/theme";
+import BusinessPicker from "@/components/app/BusinessPicker";
 import TopHeader from "@/components/app/TopHeader";
 import { Images } from "@/constants/images";
+import { useAuthStore } from "@/stores/authStore";
 import { Image } from "expo-image";
 import type { ReactNode } from "react";
 import {
@@ -34,6 +36,10 @@ export default function Page({
   backTitle,
   showBrand = false,
 }: PageProps) {
+  const isBusiness = useAuthStore(
+    (state) => state.user?.user_role?.slug === "business",
+  );
+
   return (
     <ScrollView
       style={styles.screen}
@@ -75,7 +81,12 @@ export default function Page({
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
-        {headerAction}
+        {isBusiness || headerAction ? (
+          <View style={styles.headerActions}>
+            {isBusiness ? <BusinessPicker /> : null}
+            {headerAction}
+          </View>
+        ) : null}
       </View>
       {children}
     </ScrollView>
@@ -147,6 +158,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   headerCopy: { flex: 1 },
+  headerActions: {
+    alignItems: "flex-end",
+    gap: spacing.sm,
+  },
   eyebrow: {
     color: colors.brand600,
     fontFamily: typography.fontFamilyExtraBold,

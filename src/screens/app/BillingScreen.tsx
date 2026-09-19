@@ -1,7 +1,7 @@
-import BusinessPicker from "@/components/app/BusinessPicker";
 import Page from "@/components/app/Page";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { Button } from "@/components/ui/Button";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/SelectTag";
 import { colors, radii, spacing, typography } from "@/constants/theme";
@@ -17,7 +17,7 @@ import type { Billing } from "@/types/models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
 import { useState } from "react";
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 const formatAmount = (amount: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(
@@ -239,7 +239,6 @@ export default function BillingScreen() {
       title="Monthly billing"
       subtitle="Track monthly statements, partial payments, and outstanding balances."
       backTitle="Configuration"
-      headerAction={businessMode ? <BusinessPicker /> : undefined}
       refreshing={billingsQuery.isRefetching}
       onRefresh={() => void billingsQuery.refetch()}
     >
@@ -462,106 +461,83 @@ export default function BillingScreen() {
         </View>
       )}
 
-      <Modal
+      <BottomSheet
         visible={Boolean(customBilling)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCustomBilling(null)}
+        onClose={() => setCustomBilling(null)}
+        contentContainerStyle={styles.modal}
       >
-        <Pressable
-          style={styles.backdrop}
-          onPress={() => setCustomBilling(null)}
-        >
-          <Pressable
-            style={styles.modal}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>Receive custom payment</Text>
-            <Text style={styles.modalCopy}>
-              Outstanding:{" "}
-              {formatAmount(customBilling?.current_outstanding ?? 0)}
-            </Text>
-            <Input
-              label="Amount received"
-              value={customAmount}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              onChangeText={setCustomAmount}
-            />
-            <View style={styles.actions}>
-              <Button
-                label="Cancel"
-                variant="ghost"
-                onPress={() => setCustomBilling(null)}
-              />
-              <Button
-                label="Record payment"
-                loading={paymentMutation.isPending}
-                onPress={submitCustomPayment}
-              />
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        <Text style={styles.modalTitle}>Receive custom payment</Text>
+        <Text style={styles.modalCopy}>
+          Outstanding: {formatAmount(customBilling?.current_outstanding ?? 0)}
+        </Text>
+        <Input
+          label="Amount received"
+          value={customAmount}
+          keyboardType="decimal-pad"
+          placeholder="0.00"
+          onChangeText={setCustomAmount}
+        />
+        <View style={styles.actions}>
+          <Button
+            label="Cancel"
+            variant="ghost"
+            onPress={() => setCustomBilling(null)}
+          />
+          <Button
+            label="Record payment"
+            loading={paymentMutation.isPending}
+            onPress={submitCustomPayment}
+          />
+        </View>
+      </BottomSheet>
 
-      <Modal
+      <BottomSheet
         visible={Boolean(dueDateAction)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDueDateAction(null)}
+        onClose={() => setDueDateAction(null)}
+        contentContainerStyle={styles.modal}
       >
-        <Pressable
-          style={styles.backdrop}
-          onPress={() => setDueDateAction(null)}
-        >
-          <Pressable
-            style={styles.modal}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>
-              {dueDateAction?.mode === "generate"
+        <Text style={styles.modalTitle}>
+          {dueDateAction?.mode === "generate"
+            ? dueDateAction.billing.generated_at
+              ? "Edit monthly bill"
+              : "Generate monthly bill"
+            : "Extend due date"}
+        </Text>
+        <Text style={styles.modalCopy}>
+          {dueDateAction?.mode === "generate"
+            ? "Choose the payment due date for this monthly statement. Generating again updates the date."
+            : `Original due date: ${dueDateAction ? formatDate(dueDateAction.billing.due_date) : ""}`}
+        </Text>
+        <Input
+          label={
+            dueDateAction?.mode === "generate"
+              ? "Due date"
+              : "Extended due date"
+          }
+          value={dueDateValue}
+          placeholder="YYYY-MM-DD"
+          autoCapitalize="none"
+          onChangeText={setDueDateValue}
+        />
+        <View style={styles.actions}>
+          <Button
+            label="Cancel"
+            variant="ghost"
+            onPress={() => setDueDateAction(null)}
+          />
+          <Button
+            label={
+              dueDateAction?.mode === "generate"
                 ? dueDateAction.billing.generated_at
-                  ? "Edit monthly bill"
-                  : "Generate monthly bill"
-                : "Extend due date"}
-            </Text>
-            <Text style={styles.modalCopy}>
-              {dueDateAction?.mode === "generate"
-                ? "Choose the payment due date for this monthly statement. Generating again updates the date."
-                : `Original due date: ${dueDateAction ? formatDate(dueDateAction.billing.due_date) : ""}`}
-            </Text>
-            <Input
-              label={
-                dueDateAction?.mode === "generate"
-                  ? "Due date"
-                  : "Extended due date"
-              }
-              value={dueDateValue}
-              placeholder="YYYY-MM-DD"
-              autoCapitalize="none"
-              onChangeText={setDueDateValue}
-            />
-            <View style={styles.actions}>
-              <Button
-                label="Cancel"
-                variant="ghost"
-                onPress={() => setDueDateAction(null)}
-              />
-              <Button
-                label={
-                  dueDateAction?.mode === "generate"
-                    ? dueDateAction.billing.generated_at
-                      ? "Save bill"
-                      : "Generate bill"
-                    : "Save extension"
-                }
-                loading={dueDateMutation.isPending}
-                onPress={submitDueDate}
-              />
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+                  ? "Save bill"
+                  : "Generate bill"
+                : "Save extension"
+            }
+            loading={dueDateMutation.isPending}
+            onPress={submitDueDate}
+          />
+        </View>
+      </BottomSheet>
     </Page>
   );
 }
@@ -789,19 +765,8 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     marginTop: spacing.lg,
   },
-  backdrop: {
-    alignItems: "center",
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
-    flex: 1,
-    justifyContent: "center",
-    padding: spacing.xl,
-  },
   modal: {
-    backgroundColor: colors.white,
-    borderRadius: radii.lg,
-    maxWidth: 440,
-    padding: spacing.xl,
-    width: "100%",
+    gap: spacing.xs,
   },
   modalTitle: {
     color: colors.ink,

@@ -1,7 +1,7 @@
-import BusinessPicker from "@/components/app/BusinessPicker";
 import Page from "@/components/app/Page";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/States";
 import { Button } from "@/components/ui/Button";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import {
@@ -24,10 +24,6 @@ import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import { useEffect, useState } from "react";
 import {
   Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -174,7 +170,6 @@ export default function ConnectedUsersScreen() {
       eyebrow="MANAGEMENT"
       title="Connected customers"
       subtitle="Find customers and manage connections for the selected business."
-      headerAction={<BusinessPicker />}
       refreshing={usersQuery.isFetching}
       onRefresh={() => void usersQuery.refetch()}
     >
@@ -307,20 +302,12 @@ export default function ConnectedUsersScreen() {
         </>
       )}
 
-      <Modal
+      <BottomSheet
         visible={searchOpen}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={closeSearch}
+        onClose={closeSearch}
+        contentContainerStyle={styles.modalContent}
+        sheetStyle={styles.modal}
       >
-        <KeyboardAvoidingView
-          style={styles.modal}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <ScrollView
-            contentContainerStyle={styles.modalContent}
-            keyboardShouldPersistTaps="handled"
-          >
             <View style={styles.modalHeader}>
               <View style={styles.grow}>
                 <Text style={styles.modalEyebrow}>CONNECT</Text>
@@ -422,9 +409,7 @@ export default function ConnectedUsersScreen() {
                 message="Enter at least two characters to see suggestions."
               />
             )}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheet>
     </Page>
   );
 }
@@ -565,8 +550,8 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilyRegular,
     fontSize: 12,
   },
-  modal: { backgroundColor: colors.surface, flex: 1 },
-  modalContent: { gap: spacing.xl, padding: spacing.xl, paddingBottom: 48 },
+  modal: { backgroundColor: colors.surface },
+  modalContent: { gap: spacing.xl },
   modalHeader: {
     alignItems: "flex-start",
     flexDirection: "row",
