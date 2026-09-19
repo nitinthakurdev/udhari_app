@@ -16,8 +16,9 @@ export function RealtimeNotifications() {
   const role = useAuthStore((state) => state.user?.user_role?.slug);
   const queryClient = useQueryClient();
   const router = useRouter();
-  const [notification, setNotification] =
-    useState<RealtimeNotification | null>(null);
+  const [notification, setNotification] = useState<RealtimeNotification | null>(
+    null,
+  );
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export function RealtimeNotifications() {
         queryClient.invalidateQueries({ queryKey: ["connection-requests"] }),
         queryClient.invalidateQueries({ queryKey: ["business-connections"] }),
         queryClient.invalidateQueries({ queryKey: ["connected-users"] }),
+        queryClient.invalidateQueries({ queryKey: ["recurring-configs"] }),
       ]);
     };
 

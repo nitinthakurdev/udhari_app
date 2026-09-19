@@ -23,7 +23,7 @@ type RegisterFormValues = {
   accepted_terms: boolean;
 };
 
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const gmailPattern = /^[^\s@]+@gmail\.com$/i;
 const namePattern = /^[\p{L}][\p{L}\s'-]*$/u;
 
 export default function RegisterScreen() {
@@ -78,7 +78,7 @@ export default function RegisterScreen() {
       email: values.email.trim().toLowerCase(),
       username: values.username.trim().toLowerCase(),
       phone: values.phone.trim(),
-      dial_code: null,
+      dial_code: "+91",
       role_slug: isBusiness ? "business" : "user",
     });
 
@@ -177,8 +177,8 @@ export default function RegisterScreen() {
             required: "Email is required.",
             maxLength: { value: 254, message: "Email is too long." },
             pattern: {
-              value: emailPattern,
-              message: "Enter a valid email address.",
+              value: gmailPattern,
+              message: "Enter a Gmail address ending in @gmail.com.",
             },
           }}
           render={({
@@ -187,7 +187,7 @@ export default function RegisterScreen() {
           }) => (
             <Input
               label="Email"
-              placeholder="you@example.com"
+              placeholder="you@gmail.com"
               value={value}
               onBlur={onBlur}
               onChangeText={onChange}
@@ -275,11 +275,7 @@ export default function RegisterScreen() {
               autoComplete="tel"
               errorText={error?.message}
               leftIcon={(color) => (
-                <SymbolView
-                  name={{ ios: "phone", android: "phone", web: "phone" }}
-                  size={18}
-                  tintColor={color}
-                />
+                <Text style={[styles.dialCode, { color }]}>+91</Text>
               )}
             />
           )}
@@ -413,6 +409,10 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   form: { gap: spacing.xl },
+  dialCode: {
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 15,
+  },
   switchText: {
     color: colors.slate500,
     fontFamily: typography.fontFamilyRegular,

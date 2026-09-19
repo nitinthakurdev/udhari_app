@@ -23,6 +23,36 @@ export async function getConnectedUsers(businessUuid: string) {
   return data;
 }
 
+export async function getDirectUserConnections() {
+  const { data } = await apiClient.get<ApiSuccess<BusinessConnection[]>>(
+    "/customer-management/connected-users-direct",
+  );
+  return data;
+}
+
+export async function searchDirectUsers(key: string, signal?: AbortSignal) {
+  const { data } = await apiClient.get<ApiSuccess<CustomerSearchResult[]>>(
+    "/customer-management/search-direct-users",
+    { params: { key }, signal },
+  );
+  return data;
+}
+
+export async function connectUser(userId: number) {
+  const { data } = await apiClient.post<ApiSuccess<BusinessConnection>>(
+    "/customer-management/connect-user",
+    { user_id: userId },
+  );
+  return data;
+}
+
+export async function disconnectUser(uuid: string) {
+  const { data } = await apiClient.delete<ApiSuccess<null>>(
+    `/customer-management/disconnect-user/${uuid}`,
+  );
+  return data;
+}
+
 export async function connectBusiness(
   business: BusinessSearchResult,
   sourceBusinessUuid?: string,
@@ -33,7 +63,9 @@ export async function connectBusiness(
       business_id: business.business_id,
       connect_user_id: business.connect_user_id,
       role: "customer",
-      ...(sourceBusinessUuid ? { source_business_uuid: sourceBusinessUuid } : {}),
+      ...(sourceBusinessUuid
+        ? { source_business_uuid: sourceBusinessUuid }
+        : {}),
     },
   );
   return data;

@@ -6,6 +6,7 @@ import { getBusinesses } from "@/lib/api/businesses";
 import {
   getBusinessConnections,
   getConnectedUsers,
+  getDirectUserConnections,
 } from "@/lib/api/connections";
 import { getApiError } from "@/lib/api/errors";
 import { getTransitionSummary } from "@/lib/api/transitions";
@@ -32,7 +33,10 @@ export default function DashboardScreen() {
     enabled: businessMode,
   });
   const connectionsQuery = useQuery({
-    queryKey: ["business-connections", businessMode ? activeBusiness?.uuid : "user"],
+    queryKey: [
+      "business-connections",
+      businessMode ? activeBusiness?.uuid : "user",
+    ],
     queryFn: () =>
       getBusinessConnections(businessMode ? activeBusiness?.uuid : undefined),
     enabled: !businessMode || Boolean(activeBusiness?.uuid),
@@ -42,9 +46,18 @@ export default function DashboardScreen() {
     queryFn: () => getConnectedUsers(activeBusiness?.uuid ?? ""),
     enabled: businessMode && Boolean(activeBusiness?.uuid),
   });
+  const directUsersQuery = useQuery({
+    queryKey: ["direct-user-connections"],
+    queryFn: getDirectUserConnections,
+    enabled: !businessMode,
+  });
   const transitionsQuery = useQuery({
-    queryKey: ["transition-summary", businessMode ? activeBusiness?.uuid : "user"],
-    queryFn: () => getTransitionSummary(businessMode ? activeBusiness?.uuid : undefined),
+    queryKey: [
+      "transition-summary",
+      businessMode ? activeBusiness?.uuid : "user",
+    ],
+    queryFn: () =>
+      getTransitionSummary(businessMode ? activeBusiness?.uuid : undefined),
     enabled: !businessMode || Boolean(activeBusiness?.uuid),
   });
   const openPartyTransitions = (
@@ -66,6 +79,7 @@ export default function DashboardScreen() {
   const refreshing =
     connectionsQuery.isFetching ||
     transitionsQuery.isFetching ||
+    (!businessMode && directUsersQuery.isFetching) ||
     (businessMode
       ? businessesQuery.isFetching || usersQuery.isFetching
       : false);
@@ -78,6 +92,7 @@ export default function DashboardScreen() {
         void transitionsQuery.refetch();
       }
     } else {
+      void directUsersQuery.refetch();
       void transitionsQuery.refetch();
     }
   };
@@ -109,6 +124,8 @@ export default function DashboardScreen() {
       ) : (
         <UserDashboard
           connectionsQuery={connectionsQuery}
+          directUsersQuery={directUsersQuery}
+          currentUserUuid={user?.uuid}
           transitionsQuery={transitionsQuery}
           retry={refresh}
           onSelectParty={openPartyTransitions}
@@ -120,11 +137,15 @@ export default function DashboardScreen() {
 
 function UserDashboard({
   connectionsQuery,
+  directUsersQuery,
+  currentUserUuid,
   transitionsQuery,
   retry,
   onSelectParty,
 }: {
   connectionsQuery: UseQueryResult<ApiSuccess<BusinessConnection[]>, Error>;
+  directUsersQuery: UseQueryResult<ApiSuccess<BusinessConnection[]>, Error>;
+  currentUserUuid?: string;
   transitionsQuery: UseQueryResult<ApiSuccess<TransitionBalanceSummary>, Error>;
   retry: () => void;
   onSelectParty: (
@@ -133,14 +154,26 @@ function UserDashboard({
     partyName: string,
   ) => void;
 }) {
-  if (connectionsQuery.isPending || transitionsQuery.isPending) {
+  if (
+    connectionsQuery.isPending ||
+    directUsersQuery.isPending ||
+    transitionsQuery.isPending
+  ) {
     return <LoadingState label="Loading your account…" />;
   }
-  if (connectionsQuery.isError || transitionsQuery.isError) {
+  if (
+    connectionsQuery.isError ||
+    directUsersQuery.isError ||
+    transitionsQuery.isError
+  ) {
     return (
       <ErrorState
         message={
-          getApiError(connectionsQuery.error ?? transitionsQuery.error).message
+          getApiError(
+            connectionsQuery.error ??
+              directUsersQuery.error ??
+              transitionsQuery.error,
+          ).message
         }
         retry={retry}
       />
@@ -148,21 +181,28 @@ function UserDashboard({
   }
 
   const connections = connectionsQuery.data.data as BusinessConnection[];
+  const directUsers = directUsersQuery.data.data as BusinessConnection[];
   const summary = transitionsQuery.data.data;
   const payable = summary.payable;
   const receivable = summary.receivable;
-  const businessBalances = connections.map((connection) => ({
-    amount:
-      summary.parties.find(
-        (party) =>
-          party.party_type === "business" &&
-          party.party_id === connection.business_id &&
-          party.account_type === "payable",
-      )?.amount ?? 0,
-    id: connection.business_id,
-    name: connection.business?.name ?? "Connected business",
-    uuid: connection.uuid,
-  }));
+  const partyBalances = summary.parties
+    .map((party) => ({
+      amount: party.amount,
+      id: party.party_id,
+      name:
+        party.party_type === "user"
+          ? getDirectUserName(party.party_id, directUsers, currentUserUuid)
+          : getBusinessName(party.party_id, connections),
+      partyType: party.party_type,
+      accountType: party.account_type,
+    }))
+    .sort((left, right) => right.amount - left.amount);
+  const payableParties = partyBalances.filter(
+    (party) => party.accountType === "payable",
+  );
+  const receivableParties = partyBalances.filter(
+    (party) => party.accountType === "receivable",
+  );
 
   return (
     <>
@@ -172,7 +212,11 @@ function UserDashboard({
         <View style={styles.heroTopRow}>
           <View style={styles.heroAccountIcon}>
             <SymbolView
-              name={{ ios: "person.crop.circle", android: "account_circle", web: "account_circle" }}
+              name={{
+                ios: "person.crop.circle",
+                android: "account_circle",
+                web: "account_circle",
+              }}
               size={21}
               tintColor={colors.white}
             />
@@ -185,11 +229,16 @@ function UserDashboard({
         </Text>
         <View style={styles.heroFooter}>
           <Text style={styles.heroFooterCopy}>
-            Across {connections.length} connected {connections.length === 1 ? "business" : "businesses"}
+            Across {connections.length} connected{" "}
+            {connections.length === 1 ? "business" : "businesses"}
           </Text>
           <View style={styles.heroPill}>
             <SymbolView
-              name={{ ios: "arrow.down.left", android: "south_west", web: "south_west" }}
+              name={{
+                ios: "arrow.down.left",
+                android: "south_west",
+                web: "south_west",
+              }}
               size={12}
               tintColor="#86efac"
             />
@@ -221,85 +270,23 @@ function UserDashboard({
         />
       </View>
 
-      <View style={styles.recordsSection}>
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>OUTSTANDING BY BUSINESS</Text>
-            <Text style={styles.sectionTitle}>Business amounts remaining</Text>
-          </View>
-          <View style={styles.sectionCount}>
-            <SymbolView
-              name={{ ios: "building.2", android: "business", web: "business" }}
-              size={13}
-              tintColor={colors.brand600}
-            />
-            <Text style={styles.sectionCountText}>{connections.length}</Text>
-          </View>
-        </View>
-        {businessBalances.length === 0 ? (
-          <EmptyState
-            title="No connected businesses"
-            message="Connect a business to see its remaining amount."
-          />
-        ) : (
-          <View style={styles.recordList}>
-            {businessBalances.map((business) => (
-              <Pressable
-                accessibilityRole="button"
-                key={business.uuid}
-                onPress={() =>
-                  onSelectParty("business", business.id, business.name)
-                }
-                style={({ pressed }) => [
-                  styles.businessBalanceRow,
-                  pressed && styles.recordRowPressed,
-                ]}
-              >
-                <View style={styles.businessBalanceIcon}>
-                  <SymbolView
-                    name={{ ios: "building.2.fill", android: "business", web: "business" }}
-                    size={17}
-                    tintColor={colors.brand600}
-                  />
-                </View>
-                <View style={styles.grow}>
-                  <Text numberOfLines={1} style={styles.businessBalanceName}>
-                    {business.name}
-                  </Text>
-                  <Text style={styles.businessBalanceMeta}>
-                    {business.amount > 0 ? "Payment outstanding" : "No payment due"}
-                  </Text>
-                </View>
-                <View style={styles.businessBalanceValueWrap}>
-                  <Text
-                    style={[
-                      styles.businessBalanceAmount,
-                      business.amount === 0 && styles.settledAmount,
-                    ]}
-                  >
-                    {formatAmount(business.amount)}
-                  </Text>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      business.amount === 0 ? styles.statusDotGreen : styles.statusDotOrange,
-                    ]}
-                  />
-                </View>
-                <SymbolView
-                  name={{
-                    ios: "chevron.right",
-                    android: "chevron_right",
-                    web: "chevron_right",
-                  }}
-                  size={16}
-                  tintColor={colors.slate400}
-                />
-              </Pressable>
-            ))}
-          </View>
-        )}
-      </View>
+      <OutstandingList
+        emptyMessage="You do not need to pay any connected user or business."
+        eyebrow="YOUR PAYABLES"
+        items={payableParties}
+        title="People and businesses to pay"
+        tone="orange"
+        onSelect={(item) => onSelectParty(item.partyType, item.id, item.name)}
+      />
+
+      <OutstandingList
+        emptyMessage="No connected user or business currently needs to pay you."
+        eyebrow="YOUR RECEIVABLES"
+        items={receivableParties}
+        title="People and businesses paying you"
+        tone="green"
+        onSelect={(item) => onSelectParty(item.partyType, item.id, item.name)}
+      />
     </>
   );
 }
@@ -369,6 +356,7 @@ function BusinessDashboard({
       amount: party.amount,
       id: party.party_id,
       name: getCustomerName(party.party_id, usersQuery.data?.data ?? []),
+      partyType: "user" as const,
     }))
     .sort((left, right) => right.amount - left.amount);
   const businessBalances = summary.parties
@@ -380,6 +368,7 @@ function BusinessDashboard({
       amount: party.amount,
       id: party.party_id,
       name: getBusinessName(party.party_id, connectionsQuery.data?.data ?? []),
+      partyType: "business" as const,
     }))
     .sort((left, right) => right.amount - left.amount);
   const businessReceivables = summary.parties
@@ -391,6 +380,7 @@ function BusinessDashboard({
       amount: party.amount,
       id: party.party_id,
       name: getBusinessName(party.party_id, connectionsQuery.data?.data ?? []),
+      partyType: "business" as const,
     }))
     .sort((left, right) => right.amount - left.amount);
 
@@ -401,7 +391,11 @@ function BusinessDashboard({
         <View style={styles.businessPanelTop}>
           <View style={styles.businessPanelIcon}>
             <SymbolView
-              name={{ ios: "building.2.fill", android: "business", web: "business" }}
+              name={{
+                ios: "building.2.fill",
+                android: "business",
+                web: "business",
+              }}
               size={22}
               tintColor={colors.white}
             />
@@ -415,7 +409,11 @@ function BusinessDashboard({
         </View>
         <View style={styles.businessLocationRow}>
           <SymbolView
-            name={{ ios: "location.fill", android: "location_on", web: "location_on" }}
+            name={{
+              ios: "location.fill",
+              android: "location_on",
+              web: "location_on",
+            }}
             size={13}
             tintColor={colors.brand200}
           />
@@ -491,6 +489,7 @@ type OutstandingParty = {
   amount: number;
   id: number;
   name: string;
+  partyType: "user" | "business";
 };
 
 function OutstandingList({
@@ -507,7 +506,7 @@ function OutstandingList({
   items: OutstandingParty[];
   title: string;
   tone: "orange" | "green";
-  type: "business" | "customer";
+  type?: "business" | "customer";
   onSelect: (item: OutstandingParty) => void;
 }) {
   const total = items.reduce((sum, item) => sum + item.amount, 0);
@@ -519,8 +518,9 @@ function OutstandingList({
           <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
           <Text style={styles.sectionTitle}>{title}</Text>
           <Text style={styles.sectionSummary}>
-            {items.length} {items.length === 1 ? type : `${type}s`} ·{" "}
-            {formatAmount(total)} total
+            {items.length}{" "}
+            {items.length === 1 ? (type ?? "account") : `${type ?? "account"}s`}{" "}
+            · {formatAmount(total)} total
           </Text>
         </View>
         <View style={styles.sectionCount}>
@@ -544,7 +544,7 @@ function OutstandingList({
           {items.map((item) => (
             <Pressable
               accessibilityRole="button"
-              key={`${type}-${item.id}`}
+              key={`${item.partyType}-${item.id}`}
               onPress={() => onSelect(item)}
               style={({ pressed }) => [
                 styles.businessBalanceRow,
@@ -554,7 +554,7 @@ function OutstandingList({
               <View style={styles.businessBalanceIcon}>
                 <SymbolView
                   name={
-                    type === "customer"
+                    item.partyType === "user"
                       ? { ios: "person.fill", android: "person", web: "person" }
                       : {
                           ios: "building.2.fill",
@@ -571,9 +571,9 @@ function OutstandingList({
                   {item.name}
                 </Text>
                 <Text style={styles.businessBalanceMeta}>
-                  {type === "customer"
-                    ? "Amount due to your business"
-                    : "Amount your business needs to pay"}
+                  {tone === "green"
+                    ? "Amount you need to receive"
+                    : "Amount you need to pay"}
                 </Text>
               </View>
               <Text
@@ -619,6 +619,28 @@ function getCustomerName(id: number, connections: BusinessConnection[]) {
   return customer
     ? [customer.first_name, customer.last_name].filter(Boolean).join(" ")
     : "Unavailable customer";
+}
+
+function getDirectUserName(
+  id: number,
+  connections: BusinessConnection[],
+  currentUserUuid?: string,
+) {
+  const connection = connections.find((candidate) => {
+    const currentCreated = candidate.creator?.uuid === currentUserUuid;
+    const otherId = currentCreated
+      ? candidate.connect_user_id
+      : candidate.created_by;
+    return otherId === id;
+  });
+  if (!connection) return "Connected user";
+  const otherUser =
+    connection.creator?.uuid === currentUserUuid
+      ? connection.connected_user
+      : connection.creator;
+  return otherUser
+    ? [otherUser.first_name, otherUser.last_name].filter(Boolean).join(" ")
+    : "Connected user";
 }
 
 function getBusinessName(id: number, connections: BusinessConnection[]) {

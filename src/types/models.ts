@@ -94,7 +94,7 @@ export interface ConnectionUser {
 export interface BusinessConnection {
   uuid: string;
   connect_user_id: number;
-  business_id: number;
+  business_id: number | null;
   source_business_id: number | null;
   created_by: number;
   role: string;
@@ -116,9 +116,9 @@ export interface Transition {
   uuid: string;
   customer_user_id: number;
   customer_business_id: number | null;
-  business_id: number;
+  business_id: number | null;
   business_user_id: number;
-  unit_id: number;
+  unit_id: number | null;
   product_name: string;
   product_qty: number;
   product_unit_price: number;
@@ -136,13 +136,15 @@ export interface Transition {
   unit: Pick<Unit, "name" | "code"> | null;
   created_at: string;
   updated_at: string;
+  recurring_config_id: number | null;
+  schedule_occurrence_key: string | null;
 }
 
 export interface TransitionCreatePayload {
   customer_user_id?: number;
   customer_business_id?: number | null;
   business_id: number;
-  unit_id: number;
+  unit_id: number | null;
   product_name: string;
   product_unit_price: number;
   total_price: number;
@@ -153,7 +155,7 @@ export interface TransitionCreatePayload {
 }
 
 export interface TransitionBatchItem {
-  unit_id: number;
+  unit_id: number | null;
   product_name: string;
   product_unit_price: number;
   total_price: number;
@@ -192,9 +194,16 @@ export interface Billing {
   generated_at: string | null;
   created_at: string;
   updated_at: string;
-  customer: Pick<CurrentUser, "uuid" | "first_name" | "last_name" | "username"> | null;
+  customer: Pick<
+    CurrentUser,
+    "uuid" | "first_name" | "last_name" | "username"
+  > | null;
   customer_business: Pick<Business, "uuid" | "name"> | null;
   business: Pick<Business, "uuid" | "name"> | null;
+  business_owner: Pick<
+    CurrentUser,
+    "uuid" | "first_name" | "last_name" | "username"
+  > | null;
   payments: BillingPayment[];
 }
 
@@ -243,6 +252,54 @@ export interface Unit {
   can_manage: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export type RecurringConfigType = "product" | "service";
+export type RecurringConfigWeekday =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
+export interface RecurringConfigTimeRange {
+  start_time: string;
+  end_time: string;
+}
+
+export interface RecurringConfig {
+  id: number;
+  uuid: string;
+  created_by: number | null;
+  is_creator: boolean;
+  type: RecurringConfigType;
+  name: string;
+  unit_id: number | null;
+  quantity: number | null;
+  unit_price: number;
+  total_price: number;
+  week_days: RecurringConfigWeekday[];
+  time_ranges: RecurringConfigTimeRange[];
+  created_at: string;
+  updated_at: string;
+  customer: {
+    id: number;
+    uuid: string;
+    first_name: string;
+    last_name: string | null;
+    username: string;
+  } | null;
+  creator: {
+    id: number;
+    uuid: string;
+    first_name: string;
+    last_name: string | null;
+    username: string;
+  } | null;
+  business: { uuid: string; name: string } | null;
+  customer_business: { uuid: string; name: string } | null;
+  unit: { id: number; uuid: string; name: string; code: string } | null;
 }
 
 export interface SubscriptionConfig {

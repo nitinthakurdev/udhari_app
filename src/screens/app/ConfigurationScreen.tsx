@@ -14,8 +14,20 @@ type ConfigurationItem = {
 
 const businessConfigurationItems: ConfigurationItem[] = [
   {
+    title: "Scheduled transactions",
+    description:
+      "Schedule product and service entries for connected customers.",
+    href: "/(app)/(business)/configuration/scheduled-transactions",
+    icon: {
+      ios: "calendar.badge.clock",
+      android: "event_repeat",
+      web: "event_repeat",
+    },
+  },
+  {
     title: "Monthly billing",
-    description: "Track statements, outstanding balances, and received payments.",
+    description:
+      "Track statements, outstanding balances, and received payments.",
     href: "/(app)/(business)/configuration/billing" as Href,
     icon: { ios: "doc.text", android: "receipt_long", web: "receipt_long" },
   },
@@ -46,6 +58,23 @@ const businessConfigurationItems: ConfigurationItem[] = [
 ];
 
 const userConfigurationItems: ConfigurationItem[] = [
+  {
+    title: "Connect users",
+    description: "Find and connect directly with other Udhari users.",
+    href: "/(app)/(user)/configuration/connect-user",
+    icon: { ios: "person.2", android: "group_add", web: "group_add" },
+  },
+  {
+    title: "Scheduled transactions",
+    description:
+      "Schedule product and service entries with connected businesses.",
+    href: "/(app)/(user)/configuration/scheduled-transactions",
+    icon: {
+      ios: "calendar.badge.clock",
+      android: "event_repeat",
+      web: "event_repeat",
+    },
+  },
   {
     title: "Monthly billing",
     description: "View monthly statements and payment history.",
@@ -85,17 +114,28 @@ export default function ConfigurationScreen() {
             accessibilityRole="button"
             key={item.title}
             onPress={() => router.push(item.href)}
-            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            style={({ pressed }) => [
+              styles.card,
+              pressed && styles.cardPressed,
+            ]}
           >
             <View style={styles.icon}>
-              <SymbolView name={item.icon} size={21} tintColor={colors.brand600} />
+              <SymbolView
+                name={item.icon}
+                size={21}
+                tintColor={colors.brand600}
+              />
             </View>
             <View style={styles.grow}>
               <Text style={styles.title}>{item.title}</Text>
               <Text style={styles.description}>{item.description}</Text>
             </View>
             <SymbolView
-              name={{ ios: "chevron.right", android: "chevron_right", web: "chevron_right" }}
+              name={{
+                ios: "chevron.right",
+                android: "chevron_right",
+                web: "chevron_right",
+              }}
               size={18}
               tintColor={colors.slate400}
             />
@@ -119,7 +159,10 @@ const styles = StyleSheet.create({
     minHeight: 82,
     padding: spacing.lg,
   },
-  cardPressed: { backgroundColor: colors.brand50, borderColor: colors.brand200 },
+  cardPressed: {
+    backgroundColor: colors.brand50,
+    borderColor: colors.brand200,
+  },
   icon: {
     alignItems: "center",
     backgroundColor: colors.brand50,

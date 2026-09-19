@@ -28,7 +28,7 @@ function getCounterpartBusiness(
 ) {
   return connection.source_business?.uuid === activeBusinessUuid
     ? connection.business
-    : connection.source_business ?? connection.business;
+    : (connection.source_business ?? connection.business);
 }
 
 function getCounterpartBusinessId(
@@ -36,12 +36,16 @@ function getCounterpartBusinessId(
   activeBusinessUuid?: string,
 ) {
   return connection.source_business?.uuid === activeBusinessUuid
-    ? connection.business_id
-    : (connection.source_business_id ?? connection.business_id);
+    ? (connection.business_id ?? 0)
+    : (connection.source_business_id ?? connection.business_id ?? 0);
 }
 
 function getOutstandingAmount(
-  parties: { party_type: "user" | "business"; party_id: number; amount: number }[],
+  parties: {
+    party_type: "user" | "business";
+    party_id: number;
+    amount: number;
+  }[],
   businessId: number,
 ) {
   return parties.reduce(
@@ -70,7 +74,10 @@ export default function ConnectedBusinessesScreen() {
     string | null
   >(null);
   const connectionsQuery = useQuery({
-    queryKey: [...connectionQueryKey, businessMode ? activeBusiness?.uuid : "user"],
+    queryKey: [
+      ...connectionQueryKey,
+      businessMode ? activeBusiness?.uuid : "user",
+    ],
     queryFn: () =>
       getBusinessConnections(businessMode ? activeBusiness?.uuid : undefined),
     enabled: !businessMode || Boolean(activeBusiness?.uuid),
@@ -96,7 +103,10 @@ export default function ConnectedBusinessesScreen() {
   });
   const connectMutation = useMutation({
     mutationFn: (business: Parameters<typeof connectBusiness>[0]) =>
-      connectBusiness(business, businessMode ? activeBusiness?.uuid : undefined),
+      connectBusiness(
+        business,
+        businessMode ? activeBusiness?.uuid : undefined,
+      ),
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: connectionQueryKey });
       Alert.alert(
@@ -132,7 +142,10 @@ export default function ConnectedBusinessesScreen() {
         queryClient.invalidateQueries({ queryKey: connectionQueryKey }),
         queryClient.invalidateQueries({ queryKey: ["connection-requests"] }),
       ]);
-      Alert.alert("Request updated", response.message ?? "Connection request updated.");
+      Alert.alert(
+        "Request updated",
+        response.message ?? "Connection request updated.",
+      );
     },
     onError: (error) =>
       Alert.alert("Could not update request", getApiError(error).message),
@@ -326,7 +339,11 @@ export default function ConnectedBusinessesScreen() {
               <View style={styles.requestRow} key={request.uuid}>
                 <View style={styles.businessIcon}>
                   <SymbolView
-                    name={{ ios: "building.2", android: "business", web: "business" }}
+                    name={{
+                      ios: "building.2",
+                      android: "business",
+                      web: "business",
+                    }}
                     size={18}
                     tintColor={colors.brand600}
                   />
@@ -335,7 +352,9 @@ export default function ConnectedBusinessesScreen() {
                   <Text numberOfLines={1} style={styles.businessName}>
                     {request.business?.name ?? "Business invitation"}
                   </Text>
-                  <Text style={styles.slug}>/{request.business?.slug ?? "business"}</Text>
+                  <Text style={styles.slug}>
+                    /{request.business?.slug ?? "business"}
+                  </Text>
                 </View>
                 <Button
                   label="Decline"
@@ -343,7 +362,10 @@ export default function ConnectedBusinessesScreen() {
                   size="sm"
                   disabled={responseMutation.isPending}
                   onPress={() =>
-                    responseMutation.mutate({ uuid: request.uuid, status: "rejected" })
+                    responseMutation.mutate({
+                      uuid: request.uuid,
+                      status: "rejected",
+                    })
                   }
                 />
                 <Button
@@ -352,7 +374,10 @@ export default function ConnectedBusinessesScreen() {
                   loading={responding}
                   disabled={responseMutation.isPending}
                   onPress={() =>
-                    responseMutation.mutate({ uuid: request.uuid, status: "approved" })
+                    responseMutation.mutate({
+                      uuid: request.uuid,
+                      status: "approved",
+                    })
                   }
                 />
               </View>
@@ -395,12 +420,13 @@ export default function ConnectedBusinessesScreen() {
                 </View>
                 <View style={styles.grow}>
                   <Text numberOfLines={1} style={styles.cardTitle}>
-                    {getCounterpartBusiness(connection, activeBusiness?.uuid)?.name ??
-                      "Unavailable business"}
+                    {getCounterpartBusiness(connection, activeBusiness?.uuid)
+                      ?.name ?? "Unavailable business"}
                   </Text>
                   <Text style={styles.slug}>
-                    /{getCounterpartBusiness(connection, activeBusiness?.uuid)?.slug ??
-                      "unavailable"}
+                    /
+                    {getCounterpartBusiness(connection, activeBusiness?.uuid)
+                      ?.slug ?? "unavailable"}
                   </Text>
                 </View>
                 <Text style={styles.badge}>CONNECTED</Text>
@@ -418,7 +444,8 @@ export default function ConnectedBusinessesScreen() {
                     disconnectMutation.variables === connection.uuid)
                 }
                 disabled={
-                  checkingConnectionUuid !== null || disconnectMutation.isPending
+                  checkingConnectionUuid !== null ||
+                  disconnectMutation.isPending
                 }
                 onPress={() => void confirmDisconnect(connection)}
               />

@@ -1,11 +1,11 @@
 import { Button } from "@/components/ui/Button";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useDailySubscriptionQuery } from "@/hooks/useDailySubscriptionQuery";
 import { logout } from "@/lib/api/auth";
 import { unregisterCurrentPushDevice } from "@/lib/api/push-notifications";
 import { getApiError } from "@/lib/api/errors";
-import { getCurrentUserSubscription } from "@/lib/api/subscriptions";
 import { useAuthStore } from "@/stores/authStore";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import {
@@ -23,12 +23,7 @@ export function SubscriptionGuard({ children }: { children: ReactNode }) {
   const isBusiness = useAuthStore(
     (state) => state.user?.user_role?.slug === "business",
   );
-  const subscriptionQuery = useQuery({
-    queryKey: ["user-subscriptions", "current"],
-    queryFn: getCurrentUserSubscription,
-    refetchInterval: 60_000,
-    refetchOnMount: "always",
-  });
+  const subscriptionQuery = useDailySubscriptionQuery();
   const logoutMutation = useMutation({
     mutationFn: async () => {
       await unregisterCurrentPushDevice().catch(() => undefined);

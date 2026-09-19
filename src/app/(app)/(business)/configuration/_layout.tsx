@@ -17,6 +17,7 @@ export default function ConfigurationLayout() {
       <Stack.Screen name="connect-business" options={{ title: "Connect business" }} />
       <Stack.Screen name="connect-customer" options={{ title: "Connect customer" }} />
       <Stack.Screen name="billing" options={{ title: "Monthly billing" }} />
+      <Stack.Screen name="scheduled-transactions" options={{ title: "Scheduled transactions" }} />
     </Stack>
   );
 }

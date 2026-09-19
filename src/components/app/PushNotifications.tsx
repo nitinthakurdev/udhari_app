@@ -39,12 +39,23 @@ async function loadNotifications(): Promise<NotificationsModule> {
 function configureNotificationHandler(notifications: NotificationsModule) {
   notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldPlaySound: false,
+      shouldPlaySound: true,
       shouldSetBadge: false,
-      shouldShowBanner: false,
-      shouldShowList: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
     }),
   });
+}
+
+function getProjectId() {
+  const projectId =
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    Constants.easConfig?.projectId;
+  if (typeof projectId !== "string" || !projectId) {
+    throw new Error("EAS project ID is missing from the app configuration.");
+  }
+
+  return projectId;
 }
 
 async function getExpoPushToken(notifications: NotificationsModule) {
@@ -68,13 +79,9 @@ async function getExpoPushToken(notifications: NotificationsModule) {
       : await notifications.requestPermissionsAsync();
   if (permission.status !== "granted") return null;
 
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-  if (typeof projectId !== "string" || !projectId) {
-    throw new Error("EAS project ID is missing from the app configuration.");
-  }
-
-  return (await notifications.getExpoPushTokenAsync({ projectId })).data;
+  return (
+    await notifications.getExpoPushTokenAsync({ projectId: getProjectId() })
+  ).data;
 }
 
 export function PushNotifications() {
@@ -91,6 +98,7 @@ export function PushNotifications() {
       queryClient.invalidateQueries({ queryKey: ["business-connections"] }),
       queryClient.invalidateQueries({ queryKey: ["connected-users"] }),
       queryClient.invalidateQueries({ queryKey: ["billings"] }),
+      queryClient.invalidateQueries({ queryKey: ["recurring-configs"] }),
     ]);
   }, [queryClient]);
 
@@ -112,9 +120,10 @@ export function PushNotifications() {
     if (!accessToken || Constants.appOwnership === AppOwnership.Expo) return;
 
     let active = true;
+    let pushTokenSubscription: { remove: () => void } | undefined;
     void loadNotifications()
-      .then(getExpoPushToken)
-      .then(async (expoPushToken) => {
+      .then(async (notifications) => {
+        const expoPushToken = await getExpoPushToken(notifications);
         if (
           !active ||
           !expoPushToken ||
@@ -127,6 +136,26 @@ export function PushNotifications() {
           platform: Platform.OS,
           device_name: Device.deviceName,
         });
+
+        pushTokenSubscription = notifications.addPushTokenListener(
+          (devicePushToken) => {
+            void notifications
+              .getExpoPushTokenAsync({
+                projectId: getProjectId(),
+                devicePushToken,
+              })
+              .then(({ data }) =>
+                registerPushDevice({
+                  expo_push_token: data,
+                  platform: Platform.OS as "android" | "ios",
+                  device_name: Device.deviceName,
+                }),
+              )
+              .catch((error: unknown) => {
+                console.warn("Push token refresh failed", error);
+              });
+          },
+        );
       })
       .catch((error: unknown) => {
         console.warn("Push notification registration failed", error);
@@ -134,6 +163,7 @@ export function PushNotifications() {
 
     return () => {
       active = false;
+      pushTokenSubscription?.remove();
     };
   }, [accessToken]);
 
@@ -146,12 +176,13 @@ export function PushNotifications() {
 
     void loadNotifications().then((notifications) => {
       if (!active) return;
-      receivedSubscription = notifications.addNotificationReceivedListener(() => {
-        refreshNotificationData();
-      });
-      responseSubscription = notifications.addNotificationResponseReceivedListener(
-        openNotification,
+      receivedSubscription = notifications.addNotificationReceivedListener(
+        () => {
+          refreshNotificationData();
+        },
       );
+      responseSubscription =
+        notifications.addNotificationResponseReceivedListener(openNotification);
 
       void notifications.getLastNotificationResponseAsync().then((response) => {
         if (active && response) openNotification(response);

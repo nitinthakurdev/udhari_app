@@ -1,11 +1,11 @@
 import Page from "@/components/app/Page";
 import { Button } from "@/components/ui/Button";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { useDailySubscriptionQuery } from "@/hooks/useDailySubscriptionQuery";
 import { getApiError } from "@/lib/api/errors";
 import {
   activateFreeSubscription,
   createRazorpayOrder,
-  getCurrentUserSubscription,
   getPublicSubscriptions,
   verifyRazorpayPayment,
 } from "@/lib/api/subscriptions";
@@ -28,10 +28,7 @@ export default function UpgradeScreen({
     queryKey: ["subscriptions", "public"],
     queryFn: getPublicSubscriptions,
   });
-  const currentQuery = useQuery({
-    queryKey: ["user-subscriptions", "current"],
-    queryFn: getCurrentUserSubscription,
-  });
+  const currentQuery = useDailySubscriptionQuery();
   const freeMutation = useMutation({
     mutationFn: activateFreeSubscription,
     onSuccess: async () => {

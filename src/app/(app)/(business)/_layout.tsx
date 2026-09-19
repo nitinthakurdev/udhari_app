@@ -5,6 +5,7 @@ export default function BusinessLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, animation: stackNavigation() }}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="scheduled-transitions" />
     </Stack>
   );
 }

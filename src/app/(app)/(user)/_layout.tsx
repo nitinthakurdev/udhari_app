@@ -5,10 +5,8 @@ export default function UserLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, animation: stackNavigation() }}>
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen
-        name="connect-business"
-        
-      />
+      <Stack.Screen name="connect-business" />
+      <Stack.Screen name="scheduled-transitions" />
     </Stack>
   );
 }

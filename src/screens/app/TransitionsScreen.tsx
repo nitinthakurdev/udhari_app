@@ -7,6 +7,7 @@ import { colors, radii, spacing, typography } from "@/constants/theme";
 import {
   getBusinessConnections,
   getConnectedUsers,
+  getDirectUserConnections,
 } from "@/lib/api/connections";
 import { getApiError } from "@/lib/api/errors";
 import {
@@ -17,10 +18,17 @@ import {
   updateTransition,
 } from "@/lib/api/transitions";
 import { getBusinessUnits } from "@/lib/api/units";
+import {
+  getMyRecurringConfigs,
+  getRecurringConfigs,
+  sendRecurringConfig,
+} from "@/lib/api/recurring-configs";
+import { secureStorage } from "@/lib/storage";
 import { useAuthStore } from "@/stores/authStore";
 import type { ApiSuccess } from "@/types/api";
 import type {
   BusinessConnection,
+  RecurringConfig,
   Transition,
   TransitionBatchCreatePayload,
   TransitionUpdatePayload,
@@ -34,7 +42,7 @@ import {
 } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -73,6 +81,11 @@ interface AdditionalTransitionForm extends TransitionLineForm {
 
 type SaveRequest =
   | { mode: "create-batch"; payload: TransitionBatchCreatePayload }
+  | {
+      mode: "scheduled";
+      uuid: string;
+      payload: Parameters<typeof sendRecurringConfig>[1];
+    }
   | { mode: "update"; uuid: string; payload: TransitionUpdatePayload };
 
 const emptyForm: TransitionForm = {
@@ -84,6 +97,31 @@ const emptyForm: TransitionForm = {
   balanceType: "payable",
   comment: "",
 };
+const initialScheduleTimestamp = Date.now();
+
+interface ScheduledOccurrence {
+  config: RecurringConfig;
+  occurrenceKey: string;
+}
+
+const localScheduleParts = (timestamp: number) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(timestamp));
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    date: `${value("year")}-${value("month")}-${value("day")}`,
+    weekday: value("weekday").toLowerCase(),
+    time: `${value("hour")}:${value("minute")}`,
+  };
+};
 
 export default function TransitionsScreen() {
   const queryClient = useQueryClient();
@@ -94,6 +132,7 @@ export default function TransitionsScreen() {
     partyType?: string;
   }>();
   const role = useAuthStore((state) => state.user?.user_role?.slug);
+  const currentUserUuid = useAuthStore((state) => state.user?.uuid);
   const activeBusiness = useAuthStore((state) => state.activeBusiness);
   const businessMode = role === "business";
   const [editing, setEditing] = useState<Transition | null>(null);
@@ -105,8 +144,19 @@ export default function TransitionsScreen() {
     AdditionalTransitionForm[]
   >([]);
   const [nextItemId, setNextItemId] = useState(1);
-  const [counterpartyType, setCounterpartyType] = useState<"user" | "business">("user");
+  const [counterpartyType, setCounterpartyType] = useState<"user" | "business">(
+    "user",
+  );
   const [view, setView] = useState<"all" | "unpaid" | "cancelled">("all");
+  const [useScheduled, setUseScheduled] = useState(false);
+  const [scheduledConfigUuid, setScheduledConfigUuid] = useState("");
+  const [scheduledOccurrenceKey, setScheduledOccurrenceKey] = useState("");
+  const [cachedScheduledConfigs, setCachedScheduledConfigs] = useState<
+    RecurringConfig[]
+  >([]);
+  const [scheduleTimestamp, setScheduleTimestamp] = useState(
+    initialScheduleTimestamp,
+  );
   const parsedPartyId = Number(searchParams.partyId);
   const partyType =
     searchParams.partyType === "user" || searchParams.partyType === "business"
@@ -155,6 +205,49 @@ export default function TransitionsScreen() {
         : undefined,
     enabled: !businessMode || Boolean(activeBusiness?.uuid),
   });
+  const scheduledConfigsQuery = useQuery({
+    queryKey: [
+      "recurring-configs",
+      businessMode ? activeBusiness?.uuid : currentUserUuid,
+    ],
+    queryFn: () =>
+      businessMode
+        ? getRecurringConfigs(activeBusiness?.uuid ?? "")
+        : getMyRecurringConfigs(),
+    enabled: !businessMode || Boolean(activeBusiness?.uuid),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const storageKey = `scheduled-configs:${
+    businessMode ? activeBusiness?.uuid : (currentUserUuid ?? "user")
+  }`;
+  const scheduledConfigs =
+    scheduledConfigsQuery.data?.data ?? cachedScheduledConfigs;
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve(secureStorage.getItem(storageKey)).then((stored) => {
+      if (!active || !stored) return;
+      try {
+        const parsed = JSON.parse(stored) as RecurringConfig[];
+        if (Array.isArray(parsed)) setCachedScheduledConfigs(parsed);
+      } catch {
+        // Ignore invalid or old cached configuration data.
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [storageKey]);
+  useEffect(() => {
+    if (!scheduledConfigsQuery.data) return;
+    void secureStorage.setItem(
+      storageKey,
+      JSON.stringify(scheduledConfigsQuery.data.data),
+    );
+  }, [scheduledConfigsQuery.data, storageKey]);
+  useEffect(() => {
+    const timer = setInterval(() => setScheduleTimestamp(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const customerConnectionsQuery = useQuery({
     queryKey: ["connected-users", activeBusiness?.uuid],
@@ -162,9 +255,17 @@ export default function TransitionsScreen() {
     enabled: businessMode && Boolean(activeBusiness?.uuid),
   });
   const businessConnectionsQuery = useQuery({
-    queryKey: ["business-connections", businessMode ? activeBusiness?.uuid : "user"],
+    queryKey: [
+      "business-connections",
+      businessMode ? activeBusiness?.uuid : "user",
+    ],
     queryFn: () =>
       getBusinessConnections(businessMode ? activeBusiness?.uuid : undefined),
+  });
+  const directUsersQuery = useQuery({
+    queryKey: ["direct-user-connections"],
+    queryFn: getDirectUserConnections,
+    enabled: !businessMode,
   });
   const saveMutation = useMutation<
     ApiSuccess<Transition> | ApiSuccess<Transition[]>,
@@ -174,7 +275,9 @@ export default function TransitionsScreen() {
     mutationFn: (request: SaveRequest) =>
       request.mode === "create-batch"
         ? createTransitions(request.payload)
-        : updateTransition(request.uuid, request.payload),
+        : request.mode === "scheduled"
+          ? sendRecurringConfig(request.uuid, request.payload)
+          : updateTransition(request.uuid, request.payload),
     onSuccess: async (response) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
@@ -196,8 +299,13 @@ export default function TransitionsScreen() {
     },
   });
   const approvalMutation = useMutation({
-    mutationFn: ({ uuid }: { uuid: string }) =>
-      updateTransition(uuid, { request_status: "approved" }),
+    mutationFn: ({
+      uuid,
+      status,
+    }: {
+      uuid: string;
+      status: "approved" | "rejected";
+    }) => updateTransition(uuid, { request_status: status }),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: transitionQueryRoot }),
@@ -227,18 +335,44 @@ export default function TransitionsScreen() {
 
   const customerConnections = customerConnectionsQuery.data?.data ?? [];
   const businessConnections = businessConnectionsQuery.data?.data ?? [];
+  const directUsers = directUsersQuery.data?.data ?? [];
   const connections =
     businessMode && counterpartyType === "user"
       ? customerConnections
       : businessConnections;
   const allConnections = businessMode
     ? [...customerConnections, ...businessConnections]
-    : businessConnections;
+    : [...businessConnections, ...directUsers];
   const transitions =
     transitionsQuery.data?.pages.flatMap((page) => page.data) ?? [];
   const transitionTotal =
     transitionsQuery.data?.pages[0]?.meta.pagination.total ?? 0;
   const visibleTransitions = transitions;
+  const scheduleParts = localScheduleParts(scheduleTimestamp);
+  const scheduledOccurrences: ScheduledOccurrence[] = scheduledConfigs.flatMap(
+    (config) => {
+      if (
+        !config.week_days.includes(
+          scheduleParts.weekday as RecurringConfig["week_days"][number],
+        )
+      )
+        return [];
+      return config.time_ranges
+        .filter((range) => scheduleParts.time >= range.start_time)
+        .map((range) => ({
+          config,
+          occurrenceKey: `${scheduleParts.date}:${range.start_time}`,
+        }))
+        .filter(
+          (occurrence) =>
+            !transitions.some(
+              (transition) =>
+                transition.recurring_config_id === config.id &&
+                transition.schedule_occurrence_key === occurrence.occurrenceKey,
+            ),
+        );
+    },
+  );
   const selectedConnection = connections.find(
     (connection) => connection.uuid === targetUuid,
   );
@@ -251,9 +385,11 @@ export default function TransitionsScreen() {
     enabled: formOpen && Boolean(unitBusinessUuid),
   });
   const units = unitsQuery.data?.data ?? [];
-  const effectiveUnitId = units.some((unit) => String(unit.id) === unitId)
-    ? unitId
-    : String(units[0]?.id ?? "");
+  const effectiveUnitId = editing?.recurring_config_id
+    ? String(editing.unit_id ?? "")
+    : units.some((unit) => String(unit.id) === unitId)
+      ? unitId
+      : String(units[0]?.id ?? "");
 
   const closeForm = () => {
     setFormOpen(false);
@@ -262,17 +398,25 @@ export default function TransitionsScreen() {
     setUnitId("");
     setForm(emptyForm);
     setAdditionalItems([]);
+    setUseScheduled(false);
+    setScheduledConfigUuid("");
+    setScheduledOccurrenceKey("");
   };
 
   const openCreate = (type: "user" | "business" = "business") => {
     const availableConnections =
-      businessMode && type === "user" ? customerConnections : businessConnections;
+      businessMode && type === "user"
+        ? customerConnections
+        : businessConnections;
     setCounterpartyType(type);
     setEditing(null);
     setTargetUuid(availableConnections[0]?.uuid ?? "");
     setUnitId("");
     setForm(emptyForm);
     setAdditionalItems([]);
+    setUseScheduled(false);
+    setScheduledConfigUuid("");
+    setScheduledOccurrenceKey("");
     setFormOpen(true);
   };
 
@@ -306,6 +450,100 @@ export default function TransitionsScreen() {
   };
 
   const submit = () => {
+    const scheduledConfig = scheduledConfigs.find(
+      (config) => config.uuid === scheduledConfigUuid,
+    );
+    if (useScheduled && !editing) {
+      if (!scheduledConfig) {
+        Alert.alert(
+          "Configuration required",
+          "Select a scheduled configuration.",
+        );
+        return;
+      }
+      const serviceMode = scheduledConfig.type === "service";
+      const productName = form.productName.trim();
+      const quantity = Number(form.quantity);
+      const unitPrice = Number(form.productPrice);
+      const totalPrice = serviceMode ? unitPrice : Number(form.totalPrice);
+      const selectedUnitId = Number(scheduledConfig.unit_id);
+      const occurrenceKey =
+        scheduledOccurrenceKey ||
+        scheduledOccurrences.find(
+          (item) => item.config.uuid === scheduledConfig.uuid,
+        )?.occurrenceKey;
+      if (!occurrenceKey) {
+        Alert.alert(
+          "Not scheduled now",
+          "This configuration does not have an active time slot.",
+        );
+        return;
+      }
+      if (
+        productName.length < 2 ||
+        !Number.isFinite(unitPrice) ||
+        unitPrice < 0
+      ) {
+        Alert.alert("Invalid details", "Enter a valid name and price.");
+        return;
+      }
+      if (
+        !serviceMode &&
+        (!Number.isFinite(quantity) ||
+          quantity <= 0 ||
+          !Number.isInteger(selectedUnitId) ||
+          selectedUnitId < 1)
+      ) {
+        Alert.alert(
+          "Product details required",
+          "Enter a quantity and select a unit.",
+        );
+        return;
+      }
+      saveMutation.mutate({
+        mode: "scheduled",
+        uuid: scheduledConfig.uuid,
+        payload: {
+          type: scheduledConfig.type,
+          name: productName,
+          unit_id: serviceMode ? null : selectedUnitId,
+          quantity: serviceMode ? null : quantity,
+          unit_price: unitPrice,
+          total_price: totalPrice,
+          comment: form.comment.trim() || null,
+          occurrence_key: occurrenceKey,
+          action: "edit",
+        },
+      });
+      return;
+    }
+    if (editing?.recurring_config_id && editing.unit_id === null) {
+      const productName = form.productName.trim();
+      const price = Number(form.productPrice);
+      const totalPrice = Number(form.totalPrice);
+      if (
+        productName.length < 2 ||
+        !Number.isFinite(price) ||
+        price < 0 ||
+        !Number.isFinite(totalPrice) ||
+        totalPrice < 0
+      ) {
+        Alert.alert("Invalid service", "Enter a valid service name and price.");
+        return;
+      }
+      saveMutation.mutate({
+        mode: "update",
+        uuid: editing.uuid,
+        payload: {
+          product_name: productName,
+          unit_id: null,
+          product_unit_price: price,
+          total_price: totalPrice,
+          comment: form.comment.trim() || null,
+        },
+      });
+      return;
+    }
     const itemForms = [
       { ...form, unitId: effectiveUnitId },
       ...additionalItems.map((item) => ({
@@ -329,7 +567,10 @@ export default function TransitionsScreen() {
       const itemLabel = itemForms.length > 1 ? `Item ${index + 1}: ` : "";
 
       if (productName.length < 2) {
-        Alert.alert("Product required", `${itemLabel}enter at least two characters.`);
+        Alert.alert(
+          "Product required",
+          `${itemLabel}enter at least two characters.`,
+        );
         return;
       }
       if (!Number.isFinite(quantity) || quantity < 0) {
@@ -363,7 +604,10 @@ export default function TransitionsScreen() {
         return;
       }
       if (!Number.isInteger(selectedUnitId) || selectedUnitId < 1) {
-        Alert.alert("Unit required", `${itemLabel}select a unit before saving.`);
+        Alert.alert(
+          "Unit required",
+          `${itemLabel}select a unit before saving.`,
+        );
         return;
       }
 
@@ -431,7 +675,7 @@ export default function TransitionsScreen() {
             }
           : businessMode
             ? { customer_user_id: getConnectionUserId(target) }
-          : {}),
+            : {}),
       },
     });
   };
@@ -483,8 +727,8 @@ export default function TransitionsScreen() {
         hasPartyFilter
           ? `All transitions with this ${partyType === "user" ? "customer" : "business"}.`
           : businessMode
-          ? "Manage entries for customers connected to the selected business."
-          : "Manage entries shared with your connected businesses."
+            ? "Manage entries for customers connected to the selected business."
+            : "Manage entries shared with your connected businesses."
       }
       headerAction={businessMode ? <BusinessPicker /> : undefined}
       refreshing={refreshing}
@@ -522,6 +766,18 @@ export default function TransitionsScreen() {
               </Text>
             </View>
             <View style={styles.headerActions}>
+              <Button
+                label={`Scheduled (${scheduledConfigs.length})`}
+                size="sm"
+                variant="ghost"
+                onPress={() =>
+                  router.push(
+                    businessMode
+                      ? "/(app)/(business)/scheduled-transitions"
+                      : "/(app)/(user)/scheduled-transitions",
+                  )
+                }
+              />
               {businessMode ? (
                 <>
                   <Button
@@ -567,7 +823,9 @@ export default function TransitionsScreen() {
                 />
               </View>
               <View style={styles.grow}>
-                <Text style={styles.partyFilterLabel}>Showing entries with</Text>
+                <Text style={styles.partyFilterLabel}>
+                  Showing entries with
+                </Text>
                 <Text numberOfLines={1} style={styles.partyFilterName}>
                   {partyName}
                 </Text>
@@ -618,7 +876,7 @@ export default function TransitionsScreen() {
           ) : null}
 
           {listView === "all" &&
-          connections.length === 0 &&
+          allConnections.length === 0 &&
           visibleTransitions.length === 0 ? (
             <EmptyState
               title={
@@ -695,6 +953,7 @@ export default function TransitionsScreen() {
                                 businessMode,
                                 transition.customer_business_id !== null,
                                 activeBusiness?.uuid,
+                                currentUserUuid,
                               )
                             : "Connected account"}
                         </Text>
@@ -732,7 +991,9 @@ export default function TransitionsScreen() {
                         >
                           {transition.request_status === "cancelled"
                             ? "Cancelled"
-                            : "Pending approval"}
+                            : transition.request_status === "rejected"
+                              ? "Rejected"
+                              : "Pending approval"}
                         </Text>
                       </View>
                     ) : null}
@@ -767,20 +1028,41 @@ export default function TransitionsScreen() {
                     {!locked ? (
                       <View style={styles.actions}>
                         {!proposedByCurrentSide ? (
-                          <Button
-                            label="Approve"
-                            size="sm"
-                            loading={
-                              approvalMutation.isPending &&
-                              approvalMutation.variables.uuid ===
-                                transition.uuid
-                            }
-                            onPress={() =>
-                              approvalMutation.mutate({
-                                uuid: transition.uuid,
-                              })
-                            }
-                          />
+                          <>
+                            <Button
+                              label={
+                                transition.recurring_config_id
+                                  ? "Accept"
+                                  : "Approve"
+                              }
+                              size="sm"
+                              loading={
+                                approvalMutation.isPending &&
+                                approvalMutation.variables.uuid ===
+                                  transition.uuid
+                              }
+                              onPress={() =>
+                                approvalMutation.mutate({
+                                  uuid: transition.uuid,
+                                  status: "approved",
+                                })
+                              }
+                            />
+                            {transition.recurring_config_id ? (
+                              <Button
+                                label="Reject"
+                                size="sm"
+                                variant="danger"
+                                disabled={approvalMutation.isPending}
+                                onPress={() =>
+                                  approvalMutation.mutate({
+                                    uuid: transition.uuid,
+                                    status: "rejected",
+                                  })
+                                }
+                              />
+                            ) : null}
+                          </>
                         ) : null}
                         <Button
                           label="Edit"
@@ -788,17 +1070,18 @@ export default function TransitionsScreen() {
                           variant="outline"
                           onPress={() => openEdit(transition)}
                         />
-                        {createdByCurrentSide ? (
-                            <Button
-                              label="Cancel"
-                              size="sm"
-                              variant="danger"
-                              loading={
-                                cancelMutation.isPending &&
-                                cancelMutation.variables === transition.uuid
-                              }
-                              onPress={() => confirmCancel(transition)}
-                            />
+                        {createdByCurrentSide &&
+                        !transition.recurring_config_id ? (
+                          <Button
+                            label="Cancel"
+                            size="sm"
+                            variant="danger"
+                            loading={
+                              cancelMutation.isPending &&
+                              cancelMutation.variables === transition.uuid
+                            }
+                            onPress={() => confirmCancel(transition)}
+                          />
                         ) : null}
                       </View>
                     ) : null}
@@ -836,13 +1119,14 @@ export default function TransitionsScreen() {
         open={formOpen}
         saving={saveMutation.isPending}
         targetUuid={targetUuid}
+        scheduledConfigs={scheduledConfigs}
+        scheduledConfigUuid={scheduledConfigUuid}
+        useScheduled={useScheduled}
         onChange={setForm}
         onAddItem={addTransitionItem}
         onChangeItem={(nextItem) =>
           setAdditionalItems((current) =>
-            current.map((item) =>
-              item.id === nextItem.id ? nextItem : item,
-            ),
+            current.map((item) => (item.id === nextItem.id ? nextItem : item)),
           )
         }
         onClose={closeForm}
@@ -874,6 +1158,9 @@ function TransitionFormModal({
   open,
   saving,
   targetUuid,
+  scheduledConfigs,
+  scheduledConfigUuid,
+  useScheduled,
   onChange,
   onAddItem,
   onChangeItem,
@@ -897,6 +1184,9 @@ function TransitionFormModal({
   open: boolean;
   saving: boolean;
   targetUuid: string;
+  scheduledConfigs: import("@/types/models").RecurringConfig[];
+  scheduledConfigUuid: string;
+  useScheduled: boolean;
   onChange: (form: TransitionForm) => void;
   onAddItem: () => void;
   onChangeItem: (item: AdditionalTransitionForm) => void;
@@ -910,6 +1200,12 @@ function TransitionFormModal({
     field: Field,
     value: TransitionForm[Field],
   ) => onChange({ ...form, [field]: value });
+  const scheduledConfig = scheduledConfigs.find(
+    (config) => config.uuid === scheduledConfigUuid,
+  );
+  const serviceMode =
+    (useScheduled && scheduledConfig?.type === "service") ||
+    Boolean(editing?.recurring_config_id && editing.unit_id === null);
 
   return (
     <Modal
@@ -944,7 +1240,16 @@ function TransitionFormModal({
               />
             </View>
 
-            {!editing ? (
+            {!editing && useScheduled ? (
+              <View style={styles.scheduledItem}>
+                <Text style={styles.inputLabel}>Scheduled transition</Text>
+                <Text style={styles.metaValue}>
+                  {scheduledConfig?.name} · {scheduledConfig?.type}
+                </Text>
+              </View>
+            ) : null}
+
+            {!editing && !useScheduled ? (
               <View>
                 <Text style={styles.inputLabel}>
                   {businessMode && counterpartyType === "user"
@@ -964,9 +1269,13 @@ function TransitionFormModal({
               </View>
             ) : null}
 
-            {businessMode && counterpartyType === "business" ? (
+            {!useScheduled &&
+            businessMode &&
+            counterpartyType === "business" ? (
               <View>
-                <Text style={styles.inputLabel}>Balance type for your business</Text>
+                <Text style={styles.inputLabel}>
+                  Balance type for your business
+                </Text>
                 <View style={styles.targets}>
                   {(["payable", "receivable"] as const).map((type) => {
                     const selected = form.balanceType === type;
@@ -974,7 +1283,10 @@ function TransitionFormModal({
                       <Pressable
                         key={type}
                         onPress={() => update("balanceType", type)}
-                        style={[styles.target, selected && styles.targetSelected]}
+                        style={[
+                          styles.target,
+                          selected && styles.targetSelected,
+                        ]}
                       >
                         <Text
                           style={[
@@ -995,14 +1307,24 @@ function TransitionFormModal({
               error={unitsError}
               item={form}
               loading={unitsLoading}
-              title={!editing && additionalItems.length > 0 ? "Item 1" : undefined}
+              title={
+                !editing && additionalItems.length > 0 ? "Item 1" : undefined
+              }
               unitId={unitId}
               units={units}
+              serviceMode={serviceMode}
+              fixedUnitLabel={
+                editing?.recurring_config_id && editing.unit
+                  ? `${editing.unit.name} (${editing.unit.code})`
+                  : useScheduled && scheduledConfig?.unit
+                    ? `${scheduledConfig.unit.name} (${scheduledConfig.unit.code})`
+                    : undefined
+              }
               onChange={(item) => onChange({ ...form, ...item })}
               onSelectUnit={onSelectUnit}
             />
 
-            {!editing
+            {!editing && !useScheduled
               ? additionalItems.map((item, index) => (
                   <TransitionItemFields
                     key={item.id}
@@ -1026,7 +1348,7 @@ function TransitionFormModal({
                 ))
               : null}
 
-            {!editing && additionalItems.length < 49 ? (
+            {!editing && !useScheduled && additionalItems.length < 49 ? (
               <Button
                 label="Add another item"
                 variant="outline"
@@ -1039,7 +1361,9 @@ function TransitionFormModal({
                 editing
                   ? "Save changes"
                   : `Create ${additionalItems.length + 1} ${
-                      additionalItems.length === 0 ? "transition" : "transitions"
+                      additionalItems.length === 0
+                        ? "transition"
+                        : "transitions"
                     }`
               }
               fullWidth
@@ -1060,6 +1384,8 @@ function TransitionItemFields({
   title,
   unitId,
   units,
+  serviceMode = false,
+  fixedUnitLabel,
   onChange,
   onRemove,
   onSelectUnit,
@@ -1070,6 +1396,8 @@ function TransitionItemFields({
   title?: string;
   unitId: string;
   units: Unit[];
+  serviceMode?: boolean;
+  fixedUnitLabel?: string;
   onChange: (item: TransitionLineForm) => void;
   onRemove?: () => void;
   onSelectUnit: (id: string) => void;
@@ -1089,7 +1417,8 @@ function TransitionItemFields({
     } else if (field === "quantity") {
       if (
         nextItem.calculationSource === "total_price" ||
-        (nextItem.productPrice.trim() === "" && nextItem.totalPrice.trim() !== "")
+        (nextItem.productPrice.trim() === "" &&
+          nextItem.totalPrice.trim() !== "")
       ) {
         nextItem.productPrice = calculateFormUnitPrice(nextItem);
       } else if (nextItem.productPrice.trim() !== "") {
@@ -1132,24 +1461,35 @@ function TransitionItemFields({
           onChangeText={(value) => update("productName", value)}
         />
         <View style={styles.itemValueRow}>
-          <View style={styles.unitField}>
-            <UnitDropdown
-              error={error}
-              loading={loading}
-              units={units}
-              value={unitId}
-              onChange={onSelectUnit}
-            />
-          </View>
+          {!serviceMode ? (
+            <>
+              <View style={styles.unitField}>
+                {fixedUnitLabel ? (
+                  <View>
+                    <Text style={styles.inputLabel}>Unit</Text>
+                    <Text style={styles.metaValue}>{fixedUnitLabel}</Text>
+                  </View>
+                ) : (
+                  <UnitDropdown
+                    error={error}
+                    loading={loading}
+                    units={units}
+                    value={unitId}
+                    onChange={onSelectUnit}
+                  />
+                )}
+              </View>
+              <Input
+                label="Qty"
+                value={item.quantity}
+                keyboardType="decimal-pad"
+                onChangeText={(value) => update("quantity", value)}
+                containerStyle={styles.quantityField}
+              />
+            </>
+          ) : null}
           <Input
-            label="Qty"
-            value={item.quantity}
-            keyboardType="decimal-pad"
-            onChangeText={(value) => update("quantity", value)}
-            containerStyle={styles.quantityField}
-          />
-          <Input
-            label="Unit price"
+            label={serviceMode ? "Price" : "Unit price"}
             value={item.productPrice}
             keyboardType="decimal-pad"
             placeholder="0.00"
@@ -1420,7 +1760,15 @@ function findConnectionForTransition(
     businessMode
       ? getConnectionUserId(connection) === transition.customer_user_id &&
         connection.business_id === transition.business_id
-      : connection.business_id === transition.business_id,
+      : transition.business_id === null
+        ? connection.role === "user" &&
+          [connection.created_by, connection.connect_user_id].includes(
+            transition.customer_user_id,
+          ) &&
+          [connection.created_by, connection.connect_user_id].includes(
+            transition.business_user_id,
+          )
+        : connection.business_id === transition.business_id,
   );
 }
 
@@ -1435,14 +1783,24 @@ function getConnectionLabel(
   businessMode: boolean,
   businessCounterparty = false,
   activeBusinessUuid?: string,
+  currentUserUuid?: string,
 ) {
   if (!businessMode) {
+    if (connection.role === "user") {
+      const user =
+        connection.connected_user?.uuid === currentUserUuid
+          ? connection.creator
+          : connection.connected_user;
+      return user
+        ? [user.first_name, user.last_name].filter(Boolean).join(" ")
+        : "Unavailable user";
+    }
     return connection.business?.name ?? "Unavailable business";
   }
   if (businessCounterparty) {
     return connection.business?.uuid === activeBusinessUuid
-      ? connection.source_business?.name ?? "Unavailable business"
-      : connection.business?.name ?? "Unavailable business";
+      ? (connection.source_business?.name ?? "Unavailable business")
+      : (connection.business?.name ?? "Unavailable business");
   }
 
   const user =
@@ -1513,6 +1871,21 @@ function formatDate(value: string) {
 }
 
 const styles = StyleSheet.create({
+  scheduledPanel: {
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.lg,
+  },
+  scheduledItem: {
+    borderColor: colors.line,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
   grow: { flex: 1 },
   headerActions: {
     alignItems: "flex-end",
