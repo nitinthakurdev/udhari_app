@@ -7,6 +7,10 @@ export function getNotificationHref(
 ): Href {
   const rolePath = role === "business" ? "(business)" : "(user)";
 
+  if (type === "scheduled.transition.reminder") {
+    return `/(app)/${rolePath}/scheduled-transitions` as Href;
+  }
+
   if (type.startsWith("transition.")) {
     return `/(app)/${rolePath}/(tabs)/transitions` as Href;
   }

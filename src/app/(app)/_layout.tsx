@@ -8,6 +8,7 @@ import {
   getRecurringConfigs,
 } from "@/lib/api/recurring-configs";
 import { secureStorage } from "@/lib/storage";
+import { syncScheduledTransitionReminders } from "@/lib/scheduledTransitionReminders";
 import { useQuery } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { useEffect } from "react";
@@ -32,9 +33,15 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (!configScope || !configsQuery.data) return;
+    const configs = configsQuery.data.data;
     void secureStorage.setItem(
       `scheduled-configs:${configScope}`,
-      JSON.stringify(configsQuery.data.data),
+      JSON.stringify(configs),
+    );
+    void syncScheduledTransitionReminders(configScope, configs).catch(
+      (error: unknown) => {
+        console.warn("Scheduled reminder sync failed", error);
+      },
     );
   }, [configScope, configsQuery.data]);
 

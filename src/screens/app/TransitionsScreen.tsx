@@ -161,6 +161,9 @@ export default function TransitionsScreen() {
   const hasPartyFilter = Boolean(
     partyType && Number.isInteger(parsedPartyId) && parsedPartyId > 0,
   );
+  const clientDirectUserFilter = Boolean(
+    hasPartyFilter && !businessMode && partyType === "user",
+  );
   const listView = hasPartyFilter ? "all" : view;
   const partyName = searchParams.partyName?.trim() || "Selected account";
   const transitionQueryRoot = [
@@ -186,19 +189,23 @@ export default function TransitionsScreen() {
               ? { party_type: partyType, party_id: parsedPartyId }
               : {}),
           })
-        : getTransitions({
-            page: pageParam,
-            limit: 20,
-            view: listView,
-            ...(hasPartyFilter
-              ? { party_type: partyType, party_id: parsedPartyId }
-              : {}),
-          }),
+        : clientDirectUserFilter
+          ? getTransitions({ view: listView })
+          : getTransitions({
+              page: pageParam,
+              limit: 20,
+              view: listView,
+              ...(hasPartyFilter
+                ? { party_type: partyType, party_id: parsedPartyId }
+                : {}),
+            }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
-      lastPage.meta.pagination.has_next_page
-        ? lastPage.meta.pagination.page + 1
-        : undefined,
+      clientDirectUserFilter
+        ? undefined
+        : lastPage.meta.pagination.has_next_page
+          ? lastPage.meta.pagination.page + 1
+          : undefined,
     enabled: !businessMode || Boolean(activeBusiness?.uuid),
   });
   const scheduledConfigsQuery = useQuery({
@@ -341,9 +348,18 @@ export default function TransitionsScreen() {
     : [...businessConnections, ...directUsers];
   const transitions =
     transitionsQuery.data?.pages.flatMap((page) => page.data) ?? [];
-  const transitionTotal =
-    transitionsQuery.data?.pages[0]?.meta.pagination.total ?? 0;
-  const visibleTransitions = transitions;
+  const visibleTransitions = clientDirectUserFilter
+    ? transitions.filter(
+        (transition) =>
+          transition.business_id === null &&
+          transition.customer_business_id === null &&
+          (transition.customer_user_id === parsedPartyId ||
+            transition.business_user_id === parsedPartyId),
+      )
+    : transitions;
+  const transitionTotal = clientDirectUserFilter
+    ? visibleTransitions.length
+    : (transitionsQuery.data?.pages[0]?.meta.pagination.total ?? 0);
   const scheduleParts = localScheduleParts(scheduleTimestamp);
   const scheduledOccurrences: ScheduledOccurrence[] = scheduledConfigs.flatMap(
     (config) => {

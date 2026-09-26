@@ -218,6 +218,7 @@ export interface TransitionListParams {
 export interface TransitionBalanceParty {
   party_type: "user" | "business";
   party_id: number;
+  party_name: string;
   account_type: "payable" | "receivable";
   amount: number;
 }

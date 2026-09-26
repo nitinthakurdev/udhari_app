@@ -2,7 +2,7 @@
   "expo": {
     "name": "Udhari",
     "slug": "udhari",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "orientation": "portrait",
     "icon": "./assets/ios/iTunesArtwork@2x.png",
     "scheme": "udhariapp",
@@ -14,6 +14,7 @@
     "android": {
       "icon": "./assets/android/playstore-icon.png",
       "googleServicesFile": "./google-services.json",
+      "permissions": ["SCHEDULE_EXACT_ALARM"],
       "adaptiveIcon": {
         "backgroundColor": "#FAFAFA",
         "foregroundImage": "./assets/android/mipmap-xxxhdpi/ic_launcher_foreground.png"

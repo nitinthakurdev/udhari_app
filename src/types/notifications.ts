@@ -5,7 +5,8 @@ export type NotificationType =
   | "transition.updated"
   | "transition.cancelled"
   | "transition.payment_received"
-  | "billing.payment_received";
+  | "billing.payment_received"
+  | "scheduled.transition.reminder";
 
 export interface RealtimeNotification {
   id: string;

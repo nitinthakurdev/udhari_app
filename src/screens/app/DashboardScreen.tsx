@@ -8,17 +8,19 @@ import {
   getDirectUserConnections,
 } from "@/lib/api/connections";
 import { getApiError } from "@/lib/api/errors";
-import { getTransitionSummary } from "@/lib/api/transitions";
+import { getTransitions, getTransitionSummary } from "@/lib/api/transitions";
 import { useAuthStore } from "@/stores/authStore";
 import type { ApiSuccess } from "@/types/api";
 import type {
   Business,
   BusinessConnection,
+  Transition,
   TransitionBalanceSummary,
 } from "@/types/models";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import { useRouter, type Href } from "expo-router";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function DashboardScreen() {
@@ -59,6 +61,21 @@ export default function DashboardScreen() {
       getTransitionSummary(businessMode ? activeBusiness?.uuid : undefined),
     enabled: !businessMode || Boolean(activeBusiness?.uuid),
   });
+  const personalSummaryNeedsRepair = Boolean(
+    !businessMode &&
+    transitionsQuery.data?.data.parties.some(
+      (party) =>
+        party.party_type === "user" &&
+        (!Number.isInteger(Number(party.party_id)) ||
+          Number(party.party_id) <= 0 ||
+          !party.party_name?.trim()),
+    ),
+  );
+  const directTransitionsQuery = useQuery({
+    queryKey: ["transitions", "user", "dashboard-direct-parties"],
+    queryFn: () => getTransitions({ view: "unpaid" }),
+    enabled: personalSummaryNeedsRepair,
+  });
   const openPartyTransitions = (
     partyType: "user" | "business",
     partyId: number,
@@ -78,6 +95,7 @@ export default function DashboardScreen() {
   const refreshing =
     connectionsQuery.isFetching ||
     transitionsQuery.isFetching ||
+    directTransitionsQuery.isRefetching ||
     (!businessMode && directUsersQuery.isFetching) ||
     (businessMode
       ? businessesQuery.isFetching || usersQuery.isFetching
@@ -93,6 +111,7 @@ export default function DashboardScreen() {
     } else {
       void directUsersQuery.refetch();
       void transitionsQuery.refetch();
+      if (personalSummaryNeedsRepair) void directTransitionsQuery.refetch();
     }
   };
 
@@ -124,6 +143,7 @@ export default function DashboardScreen() {
           connectionsQuery={connectionsQuery}
           directUsersQuery={directUsersQuery}
           currentUserUuid={user?.uuid}
+          directTransitions={directTransitionsQuery.data?.data ?? []}
           transitionsQuery={transitionsQuery}
           retry={refresh}
           onSelectParty={openPartyTransitions}
@@ -137,6 +157,7 @@ function UserDashboard({
   connectionsQuery,
   directUsersQuery,
   currentUserUuid,
+  directTransitions,
   transitionsQuery,
   retry,
   onSelectParty,
@@ -144,6 +165,7 @@ function UserDashboard({
   connectionsQuery: UseQueryResult<ApiSuccess<BusinessConnection[]>, Error>;
   directUsersQuery: UseQueryResult<ApiSuccess<BusinessConnection[]>, Error>;
   currentUserUuid?: string;
+  directTransitions: Transition[];
   transitionsQuery: UseQueryResult<ApiSuccess<TransitionBalanceSummary>, Error>;
   retry: () => void;
   onSelectParty: (
@@ -183,23 +205,40 @@ function UserDashboard({
   const summary = transitionsQuery.data.data;
   const payable = summary.payable;
   const receivable = summary.receivable;
-  const partyBalances = summary.parties
+  const summaryPartyBalances = summary.parties
     .map((party) => ({
       amount: party.amount,
       id: party.party_id,
       name:
-        party.party_type === "user"
+        party.party_name?.trim() ||
+        (party.party_type === "user"
           ? getDirectUserName(party.party_id, directUsers, currentUserUuid)
-          : getBusinessName(party.party_id, connections),
+          : getBusinessName(party.party_id, connections)),
       partyType: party.party_type,
       accountType: party.account_type,
     }))
     .sort((left, right) => right.amount - left.amount);
-  const payableParties = partyBalances.filter(
-    (party) => party.accountType === "payable",
+  const summaryCustomers = summaryPartyBalances.filter(
+    (party) => party.partyType === "user",
   );
-  const receivableParties = partyBalances.filter(
-    (party) => party.accountType === "receivable",
+  const repairedCustomers = getDirectUserParties(
+    directTransitions,
+    directUsers,
+    currentUserUuid,
+  );
+  const customers =
+    repairedCustomers.length > 0 &&
+    summary.parties.some(
+      (party) =>
+        party.party_type === "user" &&
+        (!Number.isInteger(Number(party.party_id)) ||
+          Number(party.party_id) <= 0 ||
+          !party.party_name?.trim()),
+    )
+      ? repairedCustomers
+      : summaryCustomers;
+  const businesses = summaryPartyBalances.filter(
+    (party) => party.partyType === "business",
   );
 
   return (
@@ -268,21 +307,9 @@ function UserDashboard({
         />
       </View>
 
-      <OutstandingList
-        emptyMessage="You do not need to pay any connected user or business."
-        eyebrow="YOUR PAYABLES"
-        items={payableParties}
-        title="People and businesses to pay"
-        tone="orange"
-        onSelect={(item) => onSelectParty(item.partyType, item.id, item.name)}
-      />
-
-      <OutstandingList
-        emptyMessage="No connected user or business currently needs to pay you."
-        eyebrow="YOUR RECEIVABLES"
-        items={receivableParties}
-        title="People and businesses paying you"
-        tone="green"
+      <TabbedPartyList
+        customers={customers}
+        businesses={businesses}
         onSelect={(item) => onSelectParty(item.partyType, item.id, item.name)}
       />
     </>
@@ -353,8 +380,11 @@ function BusinessDashboard({
     .map((party) => ({
       amount: party.amount,
       id: party.party_id,
-      name: getCustomerName(party.party_id, usersQuery.data?.data ?? []),
+      name:
+        party.party_name?.trim() ||
+        getCustomerName(party.party_id, usersQuery.data?.data ?? []),
       partyType: "user" as const,
+      accountType: "receivable" as const,
     }))
     .sort((left, right) => right.amount - left.amount);
   const businessBalances = summary.parties
@@ -365,8 +395,11 @@ function BusinessDashboard({
     .map((party) => ({
       amount: party.amount,
       id: party.party_id,
-      name: getBusinessName(party.party_id, connectionsQuery.data?.data ?? []),
+      name:
+        party.party_name?.trim() ||
+        getBusinessName(party.party_id, connectionsQuery.data?.data ?? []),
       partyType: "business" as const,
+      accountType: "payable" as const,
     }))
     .sort((left, right) => right.amount - left.amount);
   const businessReceivables = summary.parties
@@ -377,8 +410,11 @@ function BusinessDashboard({
     .map((party) => ({
       amount: party.amount,
       id: party.party_id,
-      name: getBusinessName(party.party_id, connectionsQuery.data?.data ?? []),
+      name:
+        party.party_name?.trim() ||
+        getBusinessName(party.party_id, connectionsQuery.data?.data ?? []),
       partyType: "business" as const,
+      accountType: "receivable" as const,
     }))
     .sort((left, right) => right.amount - left.amount);
 
@@ -448,34 +484,14 @@ function BusinessDashboard({
             />
           </View>
 
-          <OutstandingList
-            emptyMessage="No customers currently owe this business."
-            eyebrow="CUSTOMER RECEIVABLES"
-            items={customerBalances}
-            title="Customers who need to pay"
-            tone="green"
-            type="customer"
-            onSelect={(item) => onSelectParty("user", item.id, item.name)}
-          />
-
-          <OutstandingList
-            emptyMessage="No other businesses currently owe this business."
-            eyebrow="BUSINESS RECEIVABLES"
-            items={businessReceivables}
-            title="Businesses that need to pay"
-            tone="green"
-            type="business"
-            onSelect={(item) => onSelectParty("business", item.id, item.name)}
-          />
-
-          <OutstandingList
-            emptyMessage="This business has no outstanding payments to other businesses."
-            eyebrow="BUSINESS PAYABLES"
-            items={businessBalances}
-            title="Businesses to pay"
-            tone="orange"
-            type="business"
-            onSelect={(item) => onSelectParty("business", item.id, item.name)}
+          <TabbedPartyList
+            customers={customerBalances}
+            businesses={[...businessReceivables, ...businessBalances].sort(
+              (left, right) => right.amount - left.amount,
+            )}
+            onSelect={(item) =>
+              onSelectParty(item.partyType, item.id, item.name)
+            }
           />
         </>
       ) : null}
@@ -484,104 +500,148 @@ function BusinessDashboard({
 }
 
 type OutstandingParty = {
+  accountType: "payable" | "receivable";
   amount: number;
   id: number;
   name: string;
   partyType: "user" | "business";
 };
 
-function OutstandingList({
-  emptyMessage,
-  eyebrow,
-  items,
-  title,
-  tone,
-  type,
+function getDirectUserParties(
+  transitions: Transition[],
+  connections: BusinessConnection[],
+  currentUserUuid?: string,
+) {
+  const grouped = new Map<string, OutstandingParty>();
+
+  transitions.forEach((transition) => {
+    if (
+      transition.request_status !== "approved" ||
+      transition.business_id !== null ||
+      transition.customer_business_id !== null ||
+      transition.outstanding_amount <= 0
+    ) {
+      return;
+    }
+
+    const currentIsCustomer =
+      transition.account_type === transition.balance_type;
+    const partyId = currentIsCustomer
+      ? transition.business_user_id
+      : transition.customer_user_id;
+    if (!Number.isInteger(partyId) || partyId <= 0) return;
+
+    const key = `${partyId}:${transition.account_type}`;
+    const existing = grouped.get(key);
+    grouped.set(key, {
+      accountType: transition.account_type,
+      amount: (existing?.amount ?? 0) + transition.outstanding_amount,
+      id: partyId,
+      name: getDirectUserName(partyId, connections, currentUserUuid),
+      partyType: "user",
+    });
+  });
+
+  return [...grouped.values()].sort(
+    (left, right) => right.amount - left.amount,
+  );
+}
+
+function TabbedPartyList({
+  customers,
+  businesses,
   onSelect,
 }: {
-  emptyMessage: string;
-  eyebrow: string;
-  items: OutstandingParty[];
-  title: string;
-  tone: "orange" | "green";
-  type?: "business" | "customer";
+  customers: OutstandingParty[];
+  businesses: OutstandingParty[];
   onSelect: (item: OutstandingParty) => void;
 }) {
-  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  const [activeTab, setActiveTab] = useState<"customers" | "businesses">(
+    "customers",
+  );
+  const items = activeTab === "customers" ? customers : businesses;
+  const emptyLabel = activeTab === "customers" ? "customers" : "businesses";
 
   return (
-    <View style={styles.recordsSection}>
-      <View style={styles.sectionHeader}>
-        <View style={styles.grow}>
-          <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
-          <Text style={styles.sectionTitle}>{title}</Text>
-          <Text style={styles.sectionSummary}>
-            {items.length}{" "}
-            {items.length === 1 ? (type ?? "account") : `${type ?? "account"}s`}{" "}
-            · {formatAmount(total)} total
-          </Text>
-        </View>
-        <View style={styles.sectionCount}>
-          <SymbolView
-            name={
-              type === "customer"
-                ? { ios: "person.2", android: "group", web: "group" }
-                : { ios: "building.2", android: "business", web: "business" }
-            }
-            size={13}
-            tintColor={colors.brand600}
-          />
-          <Text style={styles.sectionCountText}>{items.length}</Text>
-        </View>
+    <View style={styles.partyPanel}>
+      <View accessibilityRole="tablist" style={styles.partyTabs}>
+        <PartyTab
+          active={activeTab === "customers"}
+          count={customers.length}
+          label="Customers"
+          onPress={() => setActiveTab("customers")}
+        />
+        <PartyTab
+          active={activeTab === "businesses"}
+          count={businesses.length}
+          label="Businesses"
+          onPress={() => setActiveTab("businesses")}
+        />
       </View>
 
       {items.length === 0 ? (
-        <EmptyState title="Nothing outstanding" message={emptyMessage} />
+        <View style={styles.partyEmpty}>
+          <EmptyState
+            title={`No ${emptyLabel} yet`}
+            message={`Outstanding ${emptyLabel} will appear here.`}
+          />
+        </View>
       ) : (
-        <View style={styles.recordList}>
+        <View>
           {items.map((item) => (
             <Pressable
               accessibilityRole="button"
-              key={`${item.partyType}-${item.id}`}
+              key={`${item.partyType}-${item.id}-${item.accountType}`}
               onPress={() => onSelect(item)}
               style={({ pressed }) => [
-                styles.businessBalanceRow,
+                styles.partyRow,
                 pressed && styles.recordRowPressed,
               ]}
             >
-              <View style={styles.businessBalanceIcon}>
-                <SymbolView
-                  name={
-                    item.partyType === "user"
-                      ? { ios: "person.fill", android: "person", web: "person" }
-                      : {
-                          ios: "building.2.fill",
-                          android: "business",
-                          web: "business",
-                        }
-                  }
-                  size={17}
-                  tintColor={colors.brand600}
-                />
-              </View>
-              <View style={styles.grow}>
-                <Text numberOfLines={1} style={styles.businessBalanceName}>
-                  {item.name}
-                </Text>
-                <Text style={styles.businessBalanceMeta}>
-                  {tone === "green"
-                    ? "Amount you need to receive"
-                    : "Amount you need to pay"}
-                </Text>
-              </View>
-              <Text
+              <View
                 style={[
-                  styles.businessBalanceAmount,
-                  tone === "green" && styles.greenText,
+                  styles.partyAvatar,
+                  item.partyType === "business" && styles.businessAvatar,
                 ]}
               >
-                {formatAmount(item.amount)}
-              </Text>
+                <Text style={styles.partyInitials}>
+                  {getInitials(item.name)}
+                </Text>
+              </View>
+              <View style={styles.grow}>
+                <Text numberOfLines={1} style={styles.partyName}>
+                  {item.name}
+                </Text>
+                <Text style={styles.partyType}>
+                  {item.partyType === "user"
+                    ? "Customer account"
+                    : "Business account"}
+                </Text>
+              </View>
+              <View style={styles.partyAmountWrap}>
+                <Text
+                  style={[
+                    styles.partyAmount,
+                    item.accountType === "receivable"
+                      ? styles.greenText
+                      : styles.orangeText,
+                  ]}
+                >
+                  {formatAmount(item.amount)}
+                </Text>
+                <Text
+                  style={[
+                    styles.partyDirection,
+                    item.accountType === "receivable"
+                      ? styles.greenText
+                      : styles.orangeText,
+                  ]}
+                >
+                  {item.accountType === "receivable"
+                    ? "will receive"
+                    : "will pay"}
+                </Text>
+              </View>
               <SymbolView
                 name={{
                   ios: "chevron.right",
@@ -597,6 +657,58 @@ function OutstandingList({
       )}
     </View>
   );
+}
+
+function PartyTab({
+  active,
+  count,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  count: number;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.partyTab,
+        active && styles.partyTabActive,
+        pressed && styles.partyTabPressed,
+      ]}
+    >
+      <Text
+        style={[styles.partyTabLabel, active && styles.partyTabLabelActive]}
+      >
+        {label}
+      </Text>
+      <View
+        style={[styles.partyTabCount, active && styles.partyTabCountActive]}
+      >
+        <Text
+          style={[
+            styles.partyTabCountText,
+            active && styles.partyTabCountTextActive,
+          ]}
+        >
+          {count}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }
 
 function getConnectionUserId(connection: BusinessConnection) {
@@ -624,18 +736,26 @@ function getDirectUserName(
   connections: BusinessConnection[],
   currentUserUuid?: string,
 ) {
-  const connection = connections.find((candidate) => {
+  const directConnections = connections.filter(
+    (candidate) =>
+      candidate.role === "user" &&
+      Boolean(candidate.creator || candidate.connected_user),
+  );
+  const matchedConnection = directConnections.find((candidate) => {
     const currentCreated = candidate.creator?.uuid === currentUserUuid;
     const otherId = currentCreated
       ? candidate.connect_user_id
       : candidate.created_by;
     return otherId === id;
   });
+  const connection =
+    matchedConnection ??
+    (directConnections.length === 1 ? directConnections[0] : undefined);
   if (!connection) return "Connected user";
   const otherUser =
-    connection.creator?.uuid === currentUserUuid
-      ? connection.connected_user
-      : connection.creator;
+    connection.connected_user?.uuid === currentUserUuid
+      ? connection.creator
+      : connection.connected_user;
   return otherUser
     ? [otherUser.first_name, otherUser.last_name].filter(Boolean).join(" ")
     : "Connected user";
@@ -693,50 +813,108 @@ function formatAmount(value: number) {
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
-  businessBalanceRow: {
+  partyPanel: {
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    elevation: 2,
+    overflow: "hidden",
+    paddingHorizontal: spacing.lg,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+  },
+  partyTabs: {
+    borderBottomColor: colors.line,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: spacing.xl,
+  },
+  partyTab: {
+    alignItems: "center",
+    borderBottomColor: "transparent",
+    borderBottomWidth: 3,
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: -1,
+    minHeight: 52,
+    paddingHorizontal: 2,
+  },
+  partyTabActive: { borderBottomColor: colors.brand600 },
+  partyTabPressed: { opacity: 0.65 },
+  partyTabLabel: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 13,
+  },
+  partyTabLabelActive: {
+    color: colors.brand600,
+    fontFamily: typography.fontFamilyExtraBold,
+  },
+  partyTabCount: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radii.full,
+    justifyContent: "center",
+    minWidth: 20,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  partyTabCountActive: { backgroundColor: colors.brand50 },
+  partyTabCountText: {
+    color: colors.slate500,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 8,
+  },
+  partyTabCountTextActive: { color: colors.brand700 },
+  partyRow: {
     alignItems: "center",
     borderBottomColor: colors.line,
     borderBottomWidth: 1,
     flexDirection: "row",
     gap: spacing.md,
-    justifyContent: "space-between",
-    minHeight: 72,
+    minHeight: 74,
     paddingVertical: spacing.md,
   },
-  businessBalanceIcon: {
+  partyAvatar: {
     alignItems: "center",
-    backgroundColor: colors.brand50,
-    borderRadius: radii.md,
-    height: 40,
+    backgroundColor: "#eef2ff",
+    borderRadius: radii.full,
+    height: 42,
     justifyContent: "center",
-    width: 40,
+    width: 42,
   },
-  businessBalanceName: {
-    color: colors.ink,
-    flex: 1,
-    fontFamily: typography.fontFamilySemiBold,
+  businessAvatar: { backgroundColor: "#ecfdf5" },
+  partyInitials: {
+    color: colors.brand700,
+    fontFamily: typography.fontFamilyExtraBold,
     fontSize: 12,
   },
-  businessBalanceMeta: {
+  partyName: {
+    color: colors.ink,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 12,
+  },
+  partyType: {
     color: colors.slate500,
     fontFamily: typography.fontFamilyRegular,
     fontSize: 9,
+    marginTop: 4,
+  },
+  partyAmountWrap: { alignItems: "flex-end" },
+  partyAmount: {
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 12,
+  },
+  partyDirection: {
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 8,
     marginTop: 3,
   },
-  businessBalanceValueWrap: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  businessBalanceAmount: {
-    color: "#ea580c",
-    fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 13,
-  },
-  settledAmount: { color: "#059669" },
-  statusDot: { borderRadius: radii.full, height: 7, width: 7 },
-  statusDotGreen: { backgroundColor: "#10b981" },
-  statusDotOrange: { backgroundColor: "#f97316" },
+  orangeText: { color: colors.danger600 },
+  partyEmpty: { paddingVertical: spacing.md },
   balanceGrid: { flexDirection: "row", gap: spacing.md },
   balanceCard: {
     backgroundColor: colors.white,
@@ -775,102 +953,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6,
     marginTop: spacing.xs,
   },
-  recordsSection: { gap: spacing.md },
-  sectionHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  sectionEyebrow: {
-    color: colors.brand600,
-    fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 9,
-    letterSpacing: 1.1,
-  },
-  sectionTitle: {
-    color: colors.ink,
-    fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 18,
-    marginTop: 3,
-  },
-  sectionSummary: {
-    color: colors.slate500,
-    fontFamily: typography.fontFamilyMedium,
-    fontSize: 10,
-    marginTop: spacing.xs,
-  },
-  sectionCount: {
-    alignItems: "center",
-    backgroundColor: colors.brand50,
-    borderRadius: radii.full,
-    flexDirection: "row",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  sectionCountText: {
-    color: colors.brand700,
-    fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 10,
-  },
-  recordCount: {
-    backgroundColor: colors.brand50,
-    borderRadius: radii.full,
-    color: colors.brand700,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  recordList: {
-    backgroundColor: colors.white,
-    borderColor: colors.line,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    elevation: 1,
-    overflow: "hidden",
-    paddingHorizontal: spacing.lg,
-    shadowColor: colors.ink,
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-  },
   recordRowPressed: { backgroundColor: colors.brand50 },
-  recordRow: {
-    alignItems: "center",
-    borderBottomColor: colors.line,
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    gap: spacing.md,
-    minHeight: 72,
-    paddingVertical: spacing.md,
-  },
-  recordIcon: {
-    alignItems: "center",
-    borderRadius: radii.md,
-    height: 40,
-    justifyContent: "center",
-    width: 40,
-  },
-  recordTitle: {
-    color: colors.ink,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 12,
-  },
-  recordMeta: {
-    color: colors.slate500,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 9,
-    marginTop: 4,
-  },
-  recordAmountWrap: { alignItems: "flex-end" },
-  recordAmount: { fontFamily: typography.fontFamilyExtraBold, fontSize: 12 },
-  recordType: {
-    color: colors.slate400,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 7,
-    marginTop: 4,
-  },
   businessPanel: {
     backgroundColor: colors.ink,
     borderRadius: radii.lg,

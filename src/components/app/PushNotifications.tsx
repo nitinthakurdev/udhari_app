@@ -18,6 +18,7 @@ const notificationTypes = new Set<NotificationType>([
   "transition.cancelled",
   "transition.payment_received",
   "billing.payment_received",
+  "scheduled.transition.reminder",
 ]);
 
 const isNotificationType = (value: unknown): value is NotificationType =>
@@ -168,8 +169,6 @@ export function PushNotifications() {
   }, [accessToken]);
 
   useEffect(() => {
-    if (Constants.appOwnership === AppOwnership.Expo) return;
-
     let active = true;
     let receivedSubscription: { remove: () => void } | undefined;
     let responseSubscription: { remove: () => void } | undefined;
