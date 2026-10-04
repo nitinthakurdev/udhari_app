@@ -1,7 +1,6 @@
-import { Image } from "expo-image";
 import { router } from "expo-router";
 import { SymbolView } from "expo-symbols";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { colors, typography } from "@/constants/theme";
 import { Images } from "@/constants/images";
@@ -22,7 +21,7 @@ export default function WelcomeScreen() {
         <View style={styles.header}>
           <View style={styles.logoBox}>
             <Image
-              contentFit="contain"
+              resizeMode="contain"
               source={Images.logo}
               style={styles.logo}
             />

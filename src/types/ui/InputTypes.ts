@@ -1,11 +1,19 @@
 import type React from "react";
-import { StyleProp, TextInputProps, TextStyle, ViewStyle } from "react-native";
+import {
+  StyleProp,
+  TextInputProps,
+  TextStyle,
+  ViewStyle,
+  type TextInput,
+} from "react-native";
 
 export type InputSize = "sm" | "md" | "lg";
 
 export type InputIcon = React.ReactNode | ((color: string) => React.ReactNode);
 
 export interface InputProps extends Omit<TextInputProps, "style"> {
+  /** Ref to the underlying native text input. */
+  inputRef?: React.Ref<TextInput>;
   /** Label rendered above the input */
   label?: string;
   /** Helper text rendered below the input (hidden if errorText is set) */

@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { Image } from "expo-image";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SymbolView } from "expo-symbols";
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -71,7 +71,7 @@ export default function AuthScaffold({
             <View style={styles.brandRow}>
               <View style={styles.logoBox}>
                 <Image
-                  contentFit="contain"
+                  resizeMode="contain"
                   source={Images.logo}
                   style={styles.logo}
                 />

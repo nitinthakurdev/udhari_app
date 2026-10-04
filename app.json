@@ -2,7 +2,7 @@
   "expo": {
     "name": "Udhari",
     "slug": "udhari",
-    "version": "0.0.2",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/ios/iTunesArtwork@2x.png",
     "scheme": "udhariapp",
@@ -38,11 +38,11 @@
         }
       ],
       "expo-secure-store",
-      "expo-image",
       [
         "expo-build-properties",
         {
           "android": {
+            "enableBundleCompression": true,
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "gifEnabled": false,

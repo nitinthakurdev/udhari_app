@@ -1,3 +1,3 @@
 export const Images = {
-  logo: require("@/assets/images/udhari-logo.webp"),
+  logo: require("@/assets/android/playstore-icon.png"),
 };

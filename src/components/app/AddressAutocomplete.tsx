@@ -6,10 +6,18 @@ import {
 } from "@/lib/api/businesses";
 import type { AddressSuggestion, SuggestedAddress } from "@/types/models";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Image } from "expo-image";
 import { SymbolView } from "expo-symbols";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type TextInput,
+} from "react-native";
 
 interface AddressAutocompleteProps {
   value: string;
@@ -30,6 +38,7 @@ export function AddressAutocomplete({
   onChangeText,
   onAddressSelected,
 }: AddressAutocompleteProps) {
+  const inputRef = useRef<TextInput>(null);
   const [focused, setFocused] = useState(false);
   const [searchKey, setSearchKey] = useState("");
   const [sessionToken, setSessionToken] = useState(createSessionToken);
@@ -52,6 +61,8 @@ export function AddressAutocomplete({
     mutationFn: (suggestion: AddressSuggestion) =>
       getAddressSuggestionDetails(suggestion.place_id, sessionToken),
     onSuccess: (response) => {
+      inputRef.current?.blur();
+      Keyboard.dismiss();
       setFocused(false);
       setSearchKey("");
       onChangeText(response.data.address);
@@ -65,11 +76,16 @@ export function AddressAutocomplete({
   return (
     <View style={styles.container}>
       <Input
+        inputRef={inputRef}
         label="Address"
         placeholder="Start typing a street address"
         value={value}
         onChangeText={onChangeText}
         onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          setSearchKey("");
+        }}
         autoCorrect={false}
         autoCapitalize="words"
         errorText={errorText}
@@ -113,7 +129,11 @@ export function AddressAutocomplete({
               </Pressable>
             ))
           )}
-          <Image source={googleAttribution} contentFit="contain" style={styles.attribution} />
+          <Image
+            resizeMode="contain"
+            source={{ uri: googleAttribution }}
+            style={styles.attribution}
+          />
         </View>
       ) : null}
     </View>

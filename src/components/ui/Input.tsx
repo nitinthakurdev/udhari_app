@@ -52,6 +52,7 @@ export function Input({
   rightIcon,
   isPassword = false,
   disabled = false,
+  inputRef,
   containerStyle,
   fieldStyle,
   inputStyle,
@@ -116,6 +117,7 @@ export function Input({
 
         <TextInput
           {...textInputProps}
+          ref={inputRef}
           editable={isEditable}
           secureTextEntry={
             isPassword ? !secureVisible : textInputProps.secureTextEntry

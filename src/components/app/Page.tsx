@@ -3,9 +3,9 @@ import BusinessPicker from "@/components/app/BusinessPicker";
 import TopHeader from "@/components/app/TopHeader";
 import { Images } from "@/constants/images";
 import { useAuthStore } from "@/stores/authStore";
-import { Image } from "expo-image";
 import type { ReactNode } from "react";
 import {
+  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -61,7 +61,7 @@ export default function Page({
         <View style={styles.brandBar}>
           <View style={styles.logoBox}>
             <Image
-              contentFit="contain"
+              resizeMode="contain"
               source={Images.logo}
               style={styles.logo}
             />
