@@ -22,8 +22,8 @@ type NotificationsModule = typeof import("expo-notifications");
 
 let syncQueue: Promise<void> = Promise.resolve();
 
-function reminderTime(weekday: RecurringConfigWeekday, startTime: string) {
-  const [hours = 0, minutes = 0] = startTime.split(":").map(Number);
+function reminderTime(weekday: RecurringConfigWeekday, endTime: string) {
+  const [hours = 0, minutes = 0] = endTime.split(":").map(Number);
   let reminderMinutes = hours * 60 + minutes - REMINDER_LEAD_MINUTES;
   let reminderWeekday = weekdayNumbers[weekday];
 
@@ -101,25 +101,25 @@ async function reconcileReminders(
 
   if (configs.length === 0 || !(await ensurePermission(notifications))) return;
 
-  for (const config of configs) {
+  const reminders = configs.flatMap((config) => {
     const party = counterpartyName(config) || "your connected account";
 
-    for (const weekday of config.week_days) {
-      for (const range of config.time_ranges) {
-        const trigger = reminderTime(weekday, range.start_time);
+    return config.week_days.flatMap((weekday) =>
+      config.time_ranges.map((range) => {
+        const trigger = reminderTime(weekday, range.end_time);
         const identifier = [
           "udhari-reminder",
           scope,
           config.uuid,
           weekday,
-          range.start_time,
+          range.end_time,
         ].join(":");
 
-        await notifications.scheduleNotificationAsync({
+        return notifications.scheduleNotificationAsync({
           identifier,
           content: {
-            title: "Scheduled transition in 30 minutes",
-            body: `${config.name} with ${party} starts at ${range.start_time}.`,
+            title: "Scheduled transition ends in 30 minutes",
+            body: `${config.name} with ${party} ends at ${range.end_time}.`,
             data: {
               type: REMINDER_TYPE,
               scope,
@@ -135,9 +135,11 @@ async function reconcileReminders(
             channelId: REMINDER_CHANNEL_ID,
           },
         });
-      }
-    }
-  }
+      }),
+    );
+  });
+
+  await Promise.all(reminders);
 }
 
 export function syncScheduledTransitionReminders(

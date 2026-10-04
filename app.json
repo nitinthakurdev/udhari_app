@@ -39,7 +39,17 @@
       ],
       "expo-secure-store",
       "expo-image",
-      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "gifEnabled": false,
+            "webpEnabled": false
+          }
+        }
+      ],
       [
         "expo-notifications",
         {
