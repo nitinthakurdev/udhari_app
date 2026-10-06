@@ -314,6 +314,11 @@ export default function BillingScreen() {
               !businessMode && billing.business_owner?.uuid === currentUserUuid;
             const canManage =
               activeBusinessIsCreditor || personalAccountIsCreditor;
+            const canGenerate =
+              canManage ||
+              (!businessMode &&
+                billing.customer?.uuid === currentUserUuid &&
+                !billing.generated_at);
             const canReceive = canManage && billing.current_outstanding > 0;
             const customerName = billing.customer
               ? `${billing.customer.first_name} ${billing.customer.last_name ?? ""}`.trim()
@@ -387,7 +392,7 @@ export default function BillingScreen() {
                   </Text>
                 ) : null}
 
-                {canManage ? (
+                {canGenerate ? (
                   <View style={styles.billActions}>
                     <Button
                       label={
@@ -397,7 +402,7 @@ export default function BillingScreen() {
                       variant="outline"
                       onPress={() => openDueDate(billing, "generate")}
                     />
-                    {billing.generated_at ? (
+                    {canManage && billing.generated_at ? (
                       <Button
                         label={
                           billing.extend_due_date
